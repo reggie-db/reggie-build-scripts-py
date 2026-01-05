@@ -256,14 +256,12 @@ def member_project_tool(
     Copies the [tool.member-project] section from the root pyproject.toml to all
     selected projects.
     """
+    data = utils.mapping_get(projects.root().pyproject, "tool", "member-project")
 
     def _set(p: Project):
         """Update the tool.member-project section for a project."""
-        data = utils.mapping_get(projects.root().pyproject, "tool", "member-project")
-        if data:
-            utils.mapping_set(
-                p.pyproject, "tool", "member-project", value=deepcopy(data)
-            )
+        if not p.is_root and data:
+            utils.mapping_update(p.pyproject, data)
 
     _update_projects(_set, sync_projects)
 

@@ -23,6 +23,7 @@ import shutil
 import subprocess
 import sys
 import time
+from copy import deepcopy
 from typing import Any, Mapping
 
 import tomlkit
@@ -92,6 +93,38 @@ def mapping_set(data: Mapping, *path: str, value: Any) -> bool:
     current[path[-1]] = value
 
     return True
+
+
+def mapping_update(left: Mapping, right: Mapping | None) -> Mapping:
+    """
+    Deep update `left` with values from `right`, mutating `left` in place.
+
+    Rules:
+    - If right is None, return left unchanged.
+    - Nested mappings are merged recursively.
+    - Non-mapping values from right overwrite left.
+
+    Args:
+        left: Mapping to update in place
+        right: Mapping whose values take precedence, or None
+
+    Returns:
+        The updated mapping (same object as left, unless left was None)
+    """
+    if right is None:
+        return left
+
+    for key, value in right.items():
+        if (
+            key in left
+            and isinstance(left[key], Mapping)
+            and isinstance(value, Mapping)
+        ):
+            mapping_update(left[key], value)
+        else:
+            left[key] = value
+
+    return left
 
 
 def mapping_prune(data: Mapping | None) -> bool:
