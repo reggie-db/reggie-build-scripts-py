@@ -15,15 +15,12 @@ Commands can be run individually or all at once via the main sync callback.
 import inspect
 import re
 import subprocess
-import sys
 from copy import deepcopy
-from itertools import chain
 from typing import Annotated, Any, Callable, Iterable, Mapping
 
 import click
 import tomlkit
 import typer
-from benedict.dicts import benedict
 from typer.models import CommandInfo
 
 from reggie_build import projects, utils
@@ -95,11 +92,8 @@ def _persist_projects(
         file = proj.pyproject_file
         doc = proj.pyproject
         # Remove empty values to keep configuration clean
-        if prune and isinstance(doc, benedict):
-            try:
-                doc.clean(strings=False)
-            except Exception:
-                pass
+        if prune:
+            utils.mapping_prune(doc)
         text = tomlkit.dumps(doc)
         if not force:
             current_text = file.read_text() if file.exists() else None
@@ -152,6 +146,8 @@ def all(projs: Iterable[Project], persist: bool = True):
         projs: List of project identifiers to sync
         persist: persist all projects
     """
+    if not isinstance(projs, list):
+        projs = list(projs)
     for cmd in app.registered_commands:
         _sync_log(cmd)
         callback = cmd.callback
@@ -187,9 +183,9 @@ def build_system(
 
     def _set(p: Project):
         """Update the build-system section for a project."""
-        p.pyproject.merge({key: deepcopy(data)}, overwrite=True)
+        p.pyproject[key] = deepcopy(data)
 
-    _update_projects(_set, sync_projects, include_scripts=True)
+    _update_projects(_set, sync_projects)
 
 
 @app.command()
@@ -223,7 +219,7 @@ def member_project_dependencies(
         """Update member project dependencies for a project."""
 
         doc = p.pyproject
-        deps = doc.get("project.dependencies", [])
+        deps = utils.mapping_get(doc, "project", "dependencies", default=[])
         member_deps: list[str] = []
 
         for i in range(len(deps)):
@@ -233,7 +229,7 @@ def member_project_dependencies(
             # Use a relative file reference with a placeholder for the workspace root
             deps[i] = f"{dep} @ file://${{PROJECT_ROOT}}/../{dep}"
             member_deps.append(dep)
-        sources = doc.get("tool.uv.sources", None)
+        sources = utils.mapping_get(doc, "tool", "uv", "sources")
         if isinstance(sources, Mapping):
             # Clean up obsolete workspace sources
             for k in list(sources.keys()):
@@ -242,15 +238,10 @@ def member_project_dependencies(
 
         if member_deps:
             # Add or update tool.uv.sources for workspace members
-            data = {}
             for dep in member_deps:
-                (
-                    data.setdefault("tool", {})
-                    .setdefault("uv", {})
-                    .setdefault("sources", {})
-                    .setdefault(dep, {})
-                )["workspace"] = True
-            p.pyproject.merge(data)
+                utils.mapping_set(
+                    doc, "tool", "uv", "sources", dep, "workspace", value=True
+                )
 
     _update_projects(_set, sync_projects)
 
@@ -268,9 +259,11 @@ def member_project_tool(
 
     def _set(p: Project):
         """Update the tool.member-project section for a project."""
-        data = projects.root().pyproject.get("tool.member-project", None)
+        data = utils.mapping_get(projects.root().pyproject, "tool", "member-project")
         if data:
-            p.pyproject.merge(deepcopy(data), overwrite=True)
+            utils.mapping_set(
+                p.pyproject, "tool", "member-project", value=deepcopy(data)
+            )
 
     _update_projects(_set, sync_projects)
 
@@ -338,9 +331,9 @@ def version(
     def _set(p: Project):
         """Update the project version."""
         pyproject = p.pyproject
-        pyproject_version = pyproject.get("project.version", None)
+        pyproject_version = utils.mapping_get(pyproject, "project", "version")
         if version != pyproject_version:
-            p.pyproject.merge({"project": {"version": version}}, overwrite=True)
+            utils.mapping_set(p.pyproject, "project", "version", value=version)
             LOG.info(f"Updated {p.name} version: {pyproject_version} -> {version}")
 
     _update_projects(_set, sync_projects)
@@ -349,7 +342,6 @@ def version(
 def _update_projects(
     pyproject_fn: Callable[[Project], None],
     projs: Iterable[Project | str] | None,
-    include_scripts: bool = False,
 ):
     """
     Apply a pyproject update function to multiple projects.
@@ -363,8 +355,6 @@ def _update_projects(
         include_scripts: Whether to include the scripts project in updates
     """
     for proj in _projects(projs):
-        if not include_scripts and proj.is_scripts:
-            continue
         pyproject_fn(proj)
 
 
@@ -385,7 +375,7 @@ def _projects(projs: Iterable[Any] | None = None) -> Iterable[Project]:
     if not projs:
         projs = projects.root().members()
         root_proj = projects.root()
-        if root_proj.pyproject.get("project", None):
+        if utils.mapping_get(root_proj.pyproject, "project"):
             projs = set(projs)
             projs.add(root_proj)
 
@@ -399,3 +389,9 @@ def _projects(projs: Iterable[Any] | None = None) -> Iterable[Project]:
         if not project_dir:
             raise ValueError(f"Project {proj} not found")
         yield Project(project_dir)
+
+
+if __name__ == "__main__":
+    projs = list(_projects())
+    version(projs)
+    _persist_projects(projs)

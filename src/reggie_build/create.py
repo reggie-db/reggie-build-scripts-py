@@ -13,7 +13,6 @@ from typing import Annotated
 
 import tomlkit
 import typer
-from benedict.dicts import benedict
 
 from reggie_build import projects, sync
 from reggie_build.projects import Project
@@ -87,13 +86,14 @@ def member(
     project_dir.mkdir(parents=True, exist_ok=True)
     LOG.info(f"Creating member project: {project_dir}")
 
-    # Initialize pyproject.toml using tomlkit and benedict for easier manipulation
-    pyproject = benedict(tomlkit.document(), keyattr_dynamic=True)
-    pyproject["build-system"] = {}
-    pyproject["project"] = {
-        "name": name,
-        "version": "0",
-        "requires-python": ">=3.6",
+    # Initialize pyproject.toml
+    pyproject = {
+        "build-system": {},
+        "project": {
+            "name": name,
+            "version": "0",
+            "requires-python": ">=3.6",
+        },
     }
 
     if project_dependencies:

@@ -9,7 +9,7 @@ within a workspace. It supports:
 - Managing project dependencies and relationships
 
 The Project class wraps a pyproject.toml file and provides convenient access to
-project metadata using benedict for dynamic attribute access.
+project metadata.
 """
 
 import fnmatch
@@ -18,12 +18,14 @@ import pathlib
 import subprocess
 from itertools import chain
 from os import PathLike
-from typing import Iterable, Annotated
+from typing import Iterable
 
 import tomlkit
 import typer
-from benedict.dicts import benedict
 
+from reggie_build import utils
+
+LOG = utils.logger(__file__)
 
 # Standard filename for Python project configuration files
 PYPROJECT_FILE_NAME = "pyproject.toml"
@@ -173,7 +175,7 @@ class Project:
     Represents a Python project with its pyproject.toml configuration.
 
     Provides access to project metadata, configuration, and workspace relationships.
-    The pyproject attribute is a mutable benedict that can be modified and persisted
+    The pyproject attribute is a TOML document that can be modified and persisted
     back to the pyproject.toml file.
     """
 
@@ -182,7 +184,7 @@ class Project:
         Initialize a Project instance from a path or project name.
 
         Locates the project directory, loads the pyproject.toml file, and parses
-        it into a mutable benedict structure for easy manipulation.
+        it into a mutable TOML document for easy manipulation.
 
         Args:
             path: Path to project directory, pyproject.toml file, or project name
@@ -200,13 +202,13 @@ class Project:
             # Ensure trailing newline for proper TOML parsing
             if pyproject_text:
                 pyproject_text += "\n"
-            pyproject_doc = tomlkit.parse(pyproject_text)
+            self.pyproject = tomlkit.parse(pyproject_text)
+
         except Exception as e:
             raise ValueError(
                 f"Project {PYPROJECT_FILE_NAME} error - path:{self.pyproject_file} error:{e}"
             )
-        # Use benedict for dynamic attribute access and easy merging
-        self.pyproject = benedict(pyproject_doc, keyattr_dynamic=True)
+        LOG.debug(f"Loaded {PYPROJECT_FILE_NAME} - path:{path} dir:{self.dir}")
 
     @property
     def name(self):
@@ -219,7 +221,7 @@ class Project:
         Returns:
             Project name string
         """
-        project_name = self.pyproject.get("project.name", None)
+        project_name = utils.mapping_get(self.pyproject, "project", "name")
         return project_name or self.dir.name
 
     @property
@@ -231,16 +233,6 @@ class Project:
             True if this project is the root workspace, False otherwise
         """
         return root_dir() == self.dir
-
-    @property
-    def is_scripts(self) -> bool:
-        """
-        Check if this project is the scripts project.
-
-        Returns:
-            True if this project is the scripts project, False otherwise
-        """
-        return scripts_dir() == self.dir
 
     def members(self) -> Iterable["Project"]:
         """
@@ -267,8 +259,12 @@ class Project:
         Yields:
             Path objects for each valid member project directory
         """
-        members = self.pyproject.get("tool.uv.workspace.members", [])
-        exclude = self.pyproject.get("tool.uv.workspace.exclude", [])
+        members = utils.mapping_get(
+            self.pyproject, "tool", "uv", "workspace", "members", default=[]
+        )
+        exclude = utils.mapping_get(
+            self.pyproject, "tool", "uv", "workspace", "exclude", default=[]
+        )
 
         def match_any(name, patterns):
             """

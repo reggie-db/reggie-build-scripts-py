@@ -8,6 +8,7 @@ toolset including:
 - Git integration for version strings and file tracking
 - System-level operations like executable discovery
 - Development environment helpers
+- Dictionary path utilities for nested key access
 
 The logger function configures logging with INFO to stdout and WARNING+ to stderr,
 respecting the LOG_LEVEL environment variable.
@@ -22,13 +23,152 @@ import shutil
 import subprocess
 import sys
 import time
+from typing import Any, Mapping
 
+import tomlkit
 import typer
 
 from reggie_build import projects
 
 # Default version string used when git version cannot be determined
 DEFAULT_VERSION = "0.0.1"
+
+
+def mapping_get(data: Mapping | None, *path: str, default: Any = None) -> Any:
+    """
+    Get a value from a nested dictionary or TOML document using a path of keys.
+
+    Args:
+        data: Dictionary or TOML document to traverse, or None
+        *path: Sequence of keys to traverse
+        default: Value to return if path not found
+
+    Returns:
+        Value at the path, or default if not found
+
+    Example:
+        dict_get({"a": {"b": {"c": 1}}}, "a", "b", "c") returns 1
+        dict_get({"a": {"b": {}}}, "a", "b", "c", default=0) returns 0
+    """
+    if not data:
+        return default
+
+    current = data
+    for key in path:
+        if not isinstance(current, (dict, tomlkit.TOMLDocument)):
+            return default
+        current = current.get(key)
+        if current is None:
+            return default
+
+    return current
+
+
+def mapping_set(data: Mapping, *path: str, value: Any) -> bool:
+    """
+    Set a value in a nested dictionary using a path of keys.
+
+    Creates intermediate dictionaries as needed.
+
+    Args:
+        data: Dictionary to modify
+        *path: Sequence of keys to traverse, last key is where value is set
+        value: Value to set at the path
+
+    Example:
+        d = {}
+        dict_set(d, "a", "b", "c", value=1)
+        # d is now {"a": {"b": {"c": 1}}}
+    """
+    if not path:
+        return False
+
+    current = data
+    for key in path[:-1]:
+        if key not in current:
+            current[key] = {}
+        current = current[key]
+
+    current[path[-1]] = value
+
+    return True
+
+
+def mapping_prune(data: Mapping | None) -> bool:
+    """
+    Recursively remove empty collections from a nested mapping.
+
+    Removes dictionaries, lists, sets, and tuples that are empty after pruning.
+    Preserves non-collection types and collections with content.
+
+    Args:
+        data: Mapping to prune in place
+
+    Returns:
+        True if any modifications were made, False otherwise
+
+    Example:
+        d = {"a": {}, "b": {"c": 1}, "d": []}
+        mapping_prune(d)  # returns True, d is now {"b": {"c": 1}}
+    """
+
+    def _is_empty(value: Any) -> bool:
+        """Check if a value is an empty collection."""
+        return isinstance(value, (list, set, tuple, Mapping)) and len(value) == 0
+
+    if _is_empty(data):
+        return False
+
+    def _prune(value):
+        """Recursively prune a value and return (pruned_value, was_modified)."""
+        if isinstance(value, Mapping):
+            modified = False
+            pruned = {}
+            for k, v in value.items():
+                pruned_v, v_modified = _prune(v)
+                if v_modified:
+                    modified = True
+                # Only include if not an empty collection
+                if not _is_empty(pruned_v):
+                    pruned[k] = pruned_v
+                else:
+                    modified = True
+            return pruned, modified or len(pruned) != len(value)
+        elif isinstance(value, list):
+            modified = False
+            pruned = []
+            for item in value:
+                pruned_item, item_modified = _prune(item)
+                if item_modified:
+                    modified = True
+                # Only include if not an empty collection
+                if not _is_empty(pruned_item):
+                    pruned.append(pruned_item)
+                else:
+                    modified = True
+            return pruned, modified or len(pruned) != len(value)
+        else:
+            return value, False
+
+    modified = False
+    keys_to_remove = []
+
+    for key, value in list(data.items()):
+        pruned_value, value_modified = _prune(value)
+        if value_modified:
+            modified = True
+        # Remove if empty collection
+        if _is_empty(pruned_value):
+            keys_to_remove.append(key)
+            modified = True
+        elif value_modified or pruned_value != value:
+            data[key] = pruned_value
+            modified = True
+
+    for key in keys_to_remove:
+        del data[key]
+
+    return modified
 
 
 def logger(name: str | None = None):
