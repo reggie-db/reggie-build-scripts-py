@@ -349,9 +349,22 @@ def git_version() -> str | None:
     """
     git_exec = which("git")
     if git_exec:
+        modified = False
         try:
+            status = subprocess.check_output(
+                [str(git_exec), "status", "--porcelain"],
+                cwd=pathlib.Path(__file__).resolve().parents[1],
+                text=True,
+            )
+            if status.strip():
+                modified = True
+        except Exception:
+            pass
+
+        try:
+            head_arg = "HEAD" if modified else "HEAD~1"
             rev = subprocess.check_output(
-                [str(git_exec), "rev-parse", "--short", "HEAD"],
+                [str(git_exec), "rev-parse", "--short", head_arg],
                 cwd=pathlib.Path(__file__).resolve().parents[1],
                 text=True,
             ).strip()
