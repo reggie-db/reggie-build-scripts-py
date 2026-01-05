@@ -94,7 +94,7 @@ def _persist_projects(
         # Remove empty values to keep configuration clean
         if prune:
             utils.mapping_prune(doc)
-        text = tomlkit.dumps(doc)
+        text = tomlkit.dumps(doc).strip() + "\n"
         if not force:
             current_text = file.read_text() if file.exists() else None
             if text == current_text:
