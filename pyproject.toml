@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "reggie-build"
-version = "0"
+version = "0.0.1+g1d563b7"
 description = "Local build utilities"
 requires-python = ">=3.12,<3.14"
 dependencies = [
@@ -16,11 +16,10 @@ dependencies = [
     "fastapi-code-generator"
 ]
 
+[project.scripts]
+reggie-build = "reggie_build.app:main"
+
 [dependency-groups]
 dev = [
     "pytest",
 ]
-
-
-[project.scripts]
-reggie-build = "reggie_build.app:main"

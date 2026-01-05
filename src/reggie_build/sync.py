@@ -16,9 +16,11 @@ import inspect
 import re
 import subprocess
 from copy import deepcopy
+from benedict.dicts import benedict
+from itertools import chain
 from typing import Annotated, Callable, Iterable, Mapping, Any
 
-import benedict
+
 import click
 import tomlkit
 import typer
@@ -50,7 +52,7 @@ def _sync_projects_option_callback(ctx: typer.Context, sync_projects: Iterable[A
 
 
 @click.pass_context
-def _sync_result_callback(ctx: typer.Context, *args, **kwargs):
+def _sync_result_callback(ctx: typer.Context, *_, **__):
     """
     Result callback for sync commands that persists project changes.
 
@@ -78,18 +80,23 @@ def _persist_projects(projs: Iterable[Any] = None, prune: bool = True):
                If None, persists all workspace member projects.
         prune: If True, removes empty values from configuration before saving
     """
+    projects_updated = False
     for proj in _projects(projs):
         file = proj.pyproject_file
         doc = proj.pyproject
         # Remove empty values to keep configuration clean
-        if prune and isinstance(doc, benedict):
+        if prune and not proj.is_root and isinstance(doc, benedict):
             doc.clean(strings=False)
         text = tomlkit.dumps(doc)
+
         current_text = file.read_text() if file.exists() else None
         # Only write if content has changed
         if text != current_text:
             file.write_text(text)
+            projects_updated = True
             LOG.info(f"Project updated:{file}")
+    if not projects_updated:
+        LOG.info("No changes made to projects")
 
 
 app = typer.Typer(result_callback=_sync_result_callback)
@@ -350,6 +357,9 @@ def _projects(
     """
     if not projs:
         projs = projects.root().members()
+        root_proj = projects.root()
+        if root_proj.pyproject.get("project", None):
+            projs = chain(projs, [root_proj])
 
     for proj in projs:
         if isinstance(proj, Project):
