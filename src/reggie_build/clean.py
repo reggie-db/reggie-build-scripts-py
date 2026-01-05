@@ -51,6 +51,8 @@ def build_artifacts():
         lambda p: p.name == "__pycache__" and p.parent != root_venv,
         # Match Python egg-info directories
         lambda p: p.name.endswith(".egg-info"),
+        # Match root dist folder
+        lambda p: p.name == "dist" and p.is_dir() and p.parent == root,
     ]
 
     for root_path, dir_names, _ in os.walk(root):
