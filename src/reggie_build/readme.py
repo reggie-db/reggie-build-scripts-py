@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """
-Update README sentinel blocks with live `--help` output.
+Update README sentinel blocks by executing commands and embedding their output.
 """
 
 from __future__ import annotations
 
 import re
+import shlex
 import subprocess
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from multiprocessing import cpu_count
 from pathlib import Path
+from typing import Pattern
 
 import typer
 
@@ -18,30 +20,39 @@ from reggie_build.utils import logger
 
 LOG = logger(__file__)
 
-app = typer.Typer(help="Update README --help sentinel blocks.")
+app = typer.Typer(help="Update README command sentinel blocks.")
 
-# Regexes (private, help-sentinel specific)
-_HELP_BLOCK_RE = re.compile(
+# Sentinel regex (generic)
+_CMD_BLOCK_RE = re.compile(
     r"""
-    \s*<!--\s*BEGIN:help\s+(?P<cmd>[^>]+?)\s*-->\s*
+    \s*<!--\s*BEGIN:cmd\s+(?P<cmd>[^>]+?)\s*-->\s*
     (?P<body>.*?)
-    \s*<!--\s*END:help\s+(?P=cmd)\s*-->\s*
+    \s*<!--\s*END:cmd\s+(?P=cmd)\s*-->\s*
     """,
     re.DOTALL | re.VERBOSE,
 )
+
 
 _HELP_OPTIONS_HEADER_RE = re.compile(r"\bOptions\b.*[-─]")
 _HELP_OPTIONS_FOOTER_RE = re.compile(r"^\s*[-─╰╯]+")
 _HELP_OPTIONS_HELP_ROW_RE = re.compile(r"^\s*[│|]?\s*--help\b")
 
 
-def _run_help(cmd: str) -> tuple[str, str]:
+def _run_cmd(cmd: str) -> tuple[str, str]:
     """
-    Execute `<cmd> --help`, remove the `--help` option and drop empty Options
-    sections, and return (cmd, formatted_help).
+    Execute `<cmd>`.
+
+    If `--help` is present in the command:
+    - Strip the `--help` option from output
+    - Remove empty Options sections
+
+    Otherwise, return raw output.
     """
+    args = shlex.split(cmd)
+    has_help = "--help" in args
+
     proc = subprocess.run(
-        f"{cmd} --help",
+        cmd,
         shell=True,
         check=True,
         stdout=subprocess.PIPE,
@@ -49,48 +60,52 @@ def _run_help(cmd: str) -> tuple[str, str]:
         text=True,
     )
 
-    lines = proc.stdout.splitlines()
+    if has_help:
+        lines = proc.stdout.splitlines()
 
-    out: list[str] = []
-    options_block: list[str] = []
-    in_options = False
+        out: list[str] = []
+        options_block: list[str] = []
+        in_options = False
 
-    for line in lines:
-        if _HELP_OPTIONS_HEADER_RE.search(line):
-            in_options = True
-            options_block = [line]
-            continue
+        for line in lines:
+            if _HELP_OPTIONS_HEADER_RE.search(line):
+                in_options = True
+                options_block = [line]
+                continue
 
-        if in_options:
-            options_block.append(line)
+            if in_options:
+                options_block.append(line)
 
-            if _HELP_OPTIONS_FOOTER_RE.match(line):
-                has_real_options = any(
-                    not _HELP_OPTIONS_HELP_ROW_RE.search(l)
-                    and not _HELP_OPTIONS_HEADER_RE.search(l)
-                    and not _HELP_OPTIONS_FOOTER_RE.match(l)
-                    and l.strip()
-                    for l in options_block
-                )
+                if _HELP_OPTIONS_FOOTER_RE.match(line):
+                    has_real_options = any(
+                        not _HELP_OPTIONS_HELP_ROW_RE.search(l)
+                        and not _HELP_OPTIONS_HEADER_RE.search(l)
+                        and not _HELP_OPTIONS_FOOTER_RE.match(l)
+                        and l.strip()
+                        for l in options_block
+                    )
 
-                if has_real_options:
-                    for l in options_block:
-                        if not _HELP_OPTIONS_HELP_ROW_RE.search(l):
-                            out.append(l)
+                    if has_real_options:
+                        for l in options_block:
+                            if not _HELP_OPTIONS_HELP_ROW_RE.search(l):
+                                out.append(l)
 
-                options_block = []
-                in_options = False
+                    options_block = []
+                    in_options = False
 
-            continue
+                continue
 
-        out.append(line)
+            out.append(line)
 
-    output = "\n".join(out).strip()
-    return cmd, f"```bash\n{output}\n```"
+        output = "\n".join(out)
+    else:
+        output = proc.stdout
+
+    return cmd, f"```bash\n{output.strip()}\n```"
 
 
-@app.command()
-def update_help(
+@app.command(name="update-cmd")
+def update_cmd(
     readme: Path = typer.Option(
         Path("README.md"),
         "--readme",
@@ -107,13 +122,18 @@ def update_help(
         max(1, cpu_count() - 1),
         "--jobs",
         "-j",
-        help="Maximum number of parallel help commands.",
+        help="Maximum number of parallel commands.",
+    ),
+    filter: str = typer.Option(
+        None,
+        "--filter",
+        help="Regex to select which BEGIN:cmd blocks to update.",
     ),
 ):
     """
-    Update README help sentinel blocks.
+    Update README command sentinel blocks.
 
-    Help commands are executed in parallel, limited by --jobs.
+    Only blocks whose command matches --filter are executed and updated.
     """
     if not readme.exists():
         readme = projects.root_dir() / readme
@@ -122,40 +142,55 @@ def update_help(
 
     content = readme.read_text()
 
-    commands: list[str] = [
-        match.group("cmd") for match in _HELP_BLOCK_RE.finditer(content)
-    ]
-
-    if not commands:
-        LOG.info("No help blocks found.")
+    block_matches = list(_CMD_BLOCK_RE.finditer(content))
+    if not block_matches:
+        LOG.info("No cmd blocks found.")
         return
 
-    LOG.info(f"Running {len(commands)} help commands with {jobs} workers.")
+    filter_re: Pattern[str] | None = re.compile(filter) if filter else None
 
-    help_map: dict[str, str] = {}
+    selected_cmds: list[str] = []
+    for m in block_matches:
+        cmd = m.group("cmd")
+        if filter_re and not filter_re.search(cmd):
+            continue
+        selected_cmds.append(cmd)
+
+    if not selected_cmds:
+        LOG.info("No cmd blocks matched filter.")
+        return
+
+    LOG.info(
+        f"Running {len(selected_cmds)} of {len(block_matches)} cmd blocks "
+        f"with {jobs} workers."
+    )
+
+    output_map: dict[str, str] = {}
 
     with ProcessPoolExecutor(max_workers=jobs) as executor:
-        futures = {executor.submit(_run_help, cmd): cmd for cmd in commands}
+        futures = {executor.submit(_run_cmd, cmd): cmd for cmd in selected_cmds}
 
         for future in as_completed(futures):
-            cmd, help_text = future.result()
-            help_map[cmd] = help_text
+            cmd, output = future.result()
+            output_map[cmd] = output
 
     def _replace(match: re.Match) -> str:
         cmd = match.group("cmd")
+        if cmd not in output_map:
+            return match.group(0)  # untouched
         return (
-            f"\n\n<!-- BEGIN:help {cmd} -->\n"
-            f"{help_map[cmd]}\n"
-            f"<!-- END:help {cmd} -->\n\n"
+            f"\n\n<!-- BEGIN:cmd {cmd} -->\n"
+            f"{output_map[cmd]}\n"
+            f"<!-- END:cmd {cmd} -->\n\n"
         )
 
-    updated = _HELP_BLOCK_RE.sub(_replace, content)
+    updated = _CMD_BLOCK_RE.sub(_replace, content)
 
     if updated == content:
         LOG.info("No changes detected. README is already up to date.")
         return
 
-    LOG.info("README help blocks updated.")
+    LOG.info("README command blocks updated.")
 
     if write:
         readme.write_text(updated)

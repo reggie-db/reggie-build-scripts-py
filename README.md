@@ -79,7 +79,7 @@ pip install -e .
 
 ### Clean
 
-<!-- BEGIN:help reggie-build clean build-artifacts -->
+<!-- BEGIN:cmd reggie-build clean build-artifacts --help -->
 ```bash
 Usage: reggie-build clean build-artifacts [OPTIONS]                            
                                                                                 
@@ -89,7 +89,7 @@ Usage: reggie-build clean build-artifacts [OPTIONS]
  (__pycache__) - Python egg-info directories                                    
  It protects the root .venv and scripts directory from deletion.
 ```
-<!-- END:help reggie-build clean build-artifacts -->
+<!-- END:cmd reggie-build clean build-artifacts --help -->
 
 ```bash
 # Clean all build artifacts
@@ -105,7 +105,7 @@ The root `.venv` and scripts directory are protected from deletion.
 
 ### Create
 
-<!-- BEGIN:help reggie-build create member -->
+<!-- BEGIN:cmd reggie-build create member --help -->
 ```bash
 Usage: reggie-build create member [OPTIONS] NAME                               
                                                                                 
@@ -135,7 +135,7 @@ Usage: reggie-build create member [OPTIONS] NAME
 │                                           [default: None]                    │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
-<!-- END:help reggie-build create member -->
+<!-- END:cmd reggie-build create member --help -->
 
 ```bash
 # Create a new project
@@ -158,7 +158,7 @@ Created projects include:
 
 ### Sync
 
-<!-- BEGIN:help reggie-build sync -->
+<!-- BEGIN:cmd reggie-build sync --help -->
 ```bash
 Usage: reggie-build sync [OPTIONS] COMMAND [ARGS]...                           
                                                                                 
@@ -187,7 +187,7 @@ Usage: reggie-build sync [OPTIONS] COMMAND [ARGS]...
 │                               projects.                                      │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
-<!-- END:help reggie-build sync -->
+<!-- END:cmd reggie-build sync --help -->
 
 ```bash
 # Sync all configuration
@@ -208,9 +208,9 @@ uv run reggie-build sync version
 
 **build-system**
 
-<!-- BEGIN:help reggie-build sync build-system -->
+<!-- BEGIN:cmd reggie-build sync build-system --help -->
 ```bash
-2026-01-05 13:59:56 [INFO] sync - Syncing build-system
+2026-01-05 14:12:10 [INFO] sync - Syncing build-system
                                                                                 
  Usage: reggie-build sync build-system [OPTIONS]                                
                                                                                 
@@ -225,13 +225,13 @@ uv run reggie-build sync version
 │                          [default: None]                                     │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
-<!-- END:help reggie-build sync build-system -->
+<!-- END:cmd reggie-build sync build-system --help -->
 
 **member-project-dependencies**
 
-<!-- BEGIN:help reggie-build sync member-project-dependencies -->
+<!-- BEGIN:cmd reggie-build sync member-project-dependencies --help -->
 ```bash
-2026-01-05 13:59:56 [INFO] sync - Syncing member-project-dependencies
+2026-01-05 14:12:10 [INFO] sync - Syncing member-project-dependencies
                                                                                 
  Usage: reggie-build sync member-project-dependencies [OPTIONS]                 
                                                                                 
@@ -245,13 +245,13 @@ uv run reggie-build sync version
 │                          [default: None]                                     │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
-<!-- END:help reggie-build sync member-project-dependencies -->
+<!-- END:cmd reggie-build sync member-project-dependencies --help -->
 
 **member-project-tool**
 
-<!-- BEGIN:help reggie-build sync member-project-tool -->
+<!-- BEGIN:cmd reggie-build sync member-project-tool --help -->
 ```bash
-2026-01-05 13:59:56 [INFO] sync - Syncing member-project-tool
+2026-01-05 14:12:10 [INFO] sync - Syncing member-project-tool
                                                                                 
  Usage: reggie-build sync member-project-tool [OPTIONS]                         
                                                                                 
@@ -266,13 +266,13 @@ uv run reggie-build sync version
 │                          [default: None]                                     │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
-<!-- END:help reggie-build sync member-project-tool -->
+<!-- END:cmd reggie-build sync member-project-tool --help -->
 
 **ruff**
 
-<!-- BEGIN:help reggie-build sync ruff -->
+<!-- BEGIN:cmd reggie-build sync ruff --help -->
 ```bash
-2026-01-05 13:59:56 [INFO] sync - Syncing ruff
+2026-01-05 14:12:10 [INFO] sync - Syncing ruff
                                                                                 
  Usage: reggie-build sync ruff [OPTIONS]                                        
                                                                                 
@@ -280,13 +280,13 @@ uv run reggie-build sync version
  Formats all Python files tracked by git using the ruff formatter. If ruff is   
  not installed, either warns or fails depending on the require parameter.
 ```
-<!-- END:help reggie-build sync ruff -->
+<!-- END:cmd reggie-build sync ruff --help -->
 
 **version**
 
-<!-- BEGIN:help reggie-build sync version -->
+<!-- BEGIN:cmd reggie-build sync version --help -->
 ```bash
-2026-01-05 13:59:56 [INFO] sync - Syncing version
+2026-01-05 14:12:10 [INFO] sync - Syncing version
                                                                                 
  Usage: reggie-build sync version [OPTIONS] [VERSION]                           
                                                                                 
@@ -307,7 +307,7 @@ uv run reggie-build sync version
 │                          [default: None]                                     │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
-<!-- END:help reggie-build sync version -->
+<!-- END:cmd reggie-build sync version --help -->
 
 ```bash
 # Use git-derived version
@@ -319,7 +319,7 @@ uv run reggie-build sync version 1.2.3
 
 ### OpenAPI
 
-<!-- BEGIN:help reggie-build openapi generate -->
+<!-- BEGIN:cmd reggie-build openapi generate --help -->
 ```bash
 Usage: reggie-build openapi generate [OPTIONS] INPUT_SPEC [OUTPUT_DIR]         
                                                                                 
@@ -347,7 +347,7 @@ Usage: reggie-build openapi generate [OPTIONS] INPUT_SPEC [OUTPUT_DIR]
 │                             regenerate on updates.                           │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
-<!-- END:help reggie-build openapi generate -->
+<!-- END:cmd reggie-build openapi generate --help -->
 
 ```bash
 # Generate from local file
