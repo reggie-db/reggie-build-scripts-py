@@ -75,7 +75,9 @@ def _sync_result_callback(ctx: typer.Context, *_, **__):
         _persist_projects(sync_projects)
 
 
-def _persist_projects(projs: Iterable[Any] = None, prune: bool = True):
+def _persist_projects(
+    projs: Iterable[Any] = None, prune: bool = True, force: bool = False
+):
     """
     Save pyproject.toml changes to disk for specified projects.
 
@@ -99,13 +101,14 @@ def _persist_projects(projs: Iterable[Any] = None, prune: bool = True):
             except Exception:
                 pass
         text = tomlkit.dumps(doc)
-
-        current_text = file.read_text() if file.exists() else None
-        # Only write if content has changed
-        if text != current_text:
-            file.write_text(text)
-            projects_updated = True
-            LOG.info(f"Project updated:{file}")
+        if not force:
+            current_text = file.read_text() if file.exists() else None
+            if text == current_text:
+                continue
+        # Only write if content has changed or forced
+        file.write_text(text)
+        projects_updated = True
+        LOG.info(f"Project updated:{file}")
     if not projects_updated:
         LOG.info("No changes made to projects")
 
@@ -156,7 +159,7 @@ def sync(sync_projects: _PROJECTS_OPTION = None, persist: bool = True):
         sig = inspect.signature(callback)
         callback(projs) if len(sig.parameters) >= 1 else callback()
     if persist:
-        _persist_projects(sync_projects)
+        _persist_projects(sync_projects, force=True)
 
 
 def _sync_log(cmd: CommandInfo | str):
