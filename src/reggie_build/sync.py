@@ -24,6 +24,7 @@ from typing import Annotated, Callable, Iterable, Mapping, Any
 import click
 import tomlkit
 import typer
+from typer.models import CommandInfo
 
 from reggie_build import projects, utils
 from reggie_build.projects import Project
@@ -120,7 +121,8 @@ def sync(
     Use --project to limit which projects are affected, or omit to sync all
     workspace members.
     """
-    if ctx.invoked_subcommand is not None:
+    if subcommand := ctx.invoked_subcommand:
+        _sync_log(subcommand)
         return
     _sync(sync_projects)
 
@@ -137,11 +139,18 @@ def _sync(sync_projects: _PROJECTS_OPTION = None):
     """
     projs = list(_projects(sync_projects))
     for cmd in app.registered_commands:
+        _sync_log(cmd)
         callback = cmd.callback
-        callback_name = getattr(callback, "__name__", None)
-        LOG.info(f"Syncing {callback_name}")
         sig = inspect.signature(callback)
         callback(projs) if len(sig.parameters) >= 1 else callback()
+
+
+def _sync_log(cmd: CommandInfo | str):
+    if isinstance(cmd, CommandInfo):
+        cmd_name = getattr(cmd.callback, "__name__", None)
+    else:
+        cmd_name = cmd
+    LOG.info(f"Syncing {cmd_name}")
 
 
 @app.command()
@@ -285,7 +294,7 @@ def ruff(
         stdout=subprocess.PIPE,
     )
     stdout = proc.stdout.decode("utf-8").strip()
-    if stdout:
+    if stdout and "reformatted" in stdout:
         LOG.info(f"ruff: {stdout}")
 
 
@@ -312,7 +321,11 @@ def version(
 
     def _set(p: Project):
         """Update the project version."""
-        p.pyproject.merge({"project": {"version": version}}, overwrite=True)
+        pyproject = p.pyproject
+        pyproject_version = pyproject.get("project.version", None)
+        if version != pyproject_version:
+            p.pyproject.merge({"project": {"version": version}}, overwrite=True)
+            LOG.info(f"Updated {p.name} version: {pyproject_version} -> {version}")
 
     _update_projects(_set, sync_projects)
 
