@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "reggie-build"
-version = "0.0.1+gb80e299"
+version = "0.0.1+ge2a84e8"
 description = "Local build utilities"
 requires-python = ">=3.12,<3.14"
 dependencies = [

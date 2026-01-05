@@ -360,7 +360,6 @@ def git_version() -> str | None:
                 modified = True
         except Exception:
             pass
-
         try:
             head_arg = "HEAD" if modified else "HEAD~1"
             rev = subprocess.check_output(
