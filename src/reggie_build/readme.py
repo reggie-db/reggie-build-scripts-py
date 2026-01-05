@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-Update README sentinel blocks by executing commands and embedding their output.
+README documentation automation utilities.
+
+This module provides commands to automatically update README files by executing
+commands embedded in sentinel blocks and replacing the content with command output.
+Supports parallel execution, smart help filtering, and selective updates.
 """
 
 from __future__ import annotations
@@ -40,13 +44,17 @@ _HELP_OPTIONS_HELP_ROW_RE = re.compile(r"^\s*[│|]?\s*--help\b")
 
 def _run_cmd(cmd: str) -> tuple[str, str]:
     """
-    Execute `<cmd>`.
+    Execute command and capture output in markdown code block format.
 
-    If `--help` is present in the command:
-    - Strip the `--help` option from output
-    - Remove empty Options sections
+    For commands with --help, filters out the --help option row from
+    output and removes empty Options sections.
 
-    Otherwise, return raw output.
+    Args:
+        cmd: Shell command to execute
+
+    Returns:
+        Tuple of (command, formatted_output) where formatted_output
+        is wrapped in markdown code block
     """
     args = shlex.split(cmd)
     has_help = "--help" in args
@@ -78,17 +86,17 @@ def _run_cmd(cmd: str) -> tuple[str, str]:
 
                 if _HELP_OPTIONS_FOOTER_RE.match(line):
                     has_real_options = any(
-                        not _HELP_OPTIONS_HELP_ROW_RE.search(l)
-                        and not _HELP_OPTIONS_HEADER_RE.search(l)
-                        and not _HELP_OPTIONS_FOOTER_RE.match(l)
-                        and l.strip()
-                        for l in options_block
+                        not _HELP_OPTIONS_HELP_ROW_RE.search(opt_line)
+                        and not _HELP_OPTIONS_HEADER_RE.search(opt_line)
+                        and not _HELP_OPTIONS_FOOTER_RE.match(opt_line)
+                        and opt_line.strip()
+                        for opt_line in options_block
                     )
 
                     if has_real_options:
-                        for l in options_block:
-                            if not _HELP_OPTIONS_HELP_ROW_RE.search(l):
-                                out.append(l)
+                        for opt_line in options_block:
+                            if not _HELP_OPTIONS_HELP_ROW_RE.search(opt_line):
+                                out.append(opt_line)
 
                     options_block = []
                     in_options = False
@@ -175,6 +183,7 @@ def update_cmd(
             output_map[cmd] = output
 
     def _replace(match: re.Match) -> str:
+        """Replace sentinel block content with executed command output."""
         cmd = match.group("cmd")
         if cmd not in output_map:
             return match.group(0)  # untouched

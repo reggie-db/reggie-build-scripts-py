@@ -7,11 +7,12 @@ a unified interface for workspace management. The CLI provides commands for:
 - Creating new projects
 - Synchronizing project configurations
 - Generating FastAPI code from OpenAPI specifications
+- Updating README documentation with command help output
 """
 
 import typer
 
-from reggie_build import clean, create, openapi, sync, readme
+from reggie_build import clean, create, openapi, readme, sync
 
 app = typer.Typer()
 app.add_typer(clean.app, name="clean")
