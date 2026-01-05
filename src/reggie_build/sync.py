@@ -93,8 +93,11 @@ def _persist_projects(projs: Iterable[Any] = None, prune: bool = True):
         file = proj.pyproject_file
         doc = proj.pyproject
         # Remove empty values to keep configuration clean
-        if prune and not proj.is_root and isinstance(doc, benedict):
-            doc.clean(strings=False)
+        if prune and isinstance(doc, benedict):
+            try:
+                doc.clean(strings=False)
+            except Exception:
+                pass
         text = tomlkit.dumps(doc)
 
         current_text = file.read_text() if file.exists() else None
