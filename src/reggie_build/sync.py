@@ -15,6 +15,7 @@ Commands can be run individually or all at once via the main sync callback.
 import inspect
 import re
 import subprocess
+import sys
 from copy import deepcopy
 from benedict.dicts import benedict
 from itertools import chain
@@ -122,7 +123,8 @@ def sync(
     workspace members.
     """
     if subcommand := ctx.invoked_subcommand:
-        _sync_log(subcommand)
+        if not utils.is_help(ctx):
+            _sync_log(subcommand)
         return
     _sync(sync_projects)
 

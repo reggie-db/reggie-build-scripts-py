@@ -23,6 +23,8 @@ import subprocess
 import sys
 import time
 
+import typer
+
 from reggie_build import projects
 
 # Default version string used when git version cannot be determined
@@ -115,6 +117,11 @@ def dev_local() -> pathlib.Path:
     """
     root_dir = projects.root_dir()
     return root_dir / "dev-local"
+
+
+def is_help(ctx: typer.Context) -> bool:
+    help_option_names = ctx.help_option_names
+    return help_option_names and any(arg in help_option_names for arg in sys.argv)
 
 
 def watch_file(src: pathlib.Path, interval: float = 2.0):

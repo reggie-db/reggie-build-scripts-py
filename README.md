@@ -210,9 +210,7 @@ uv run reggie-build sync version
 
 <!-- BEGIN:cmd reggie-build sync build-system --help -->
 ```bash
-2026-01-05 14:12:10 [INFO] sync - Syncing build-system
-                                                                                
- Usage: reggie-build sync build-system [OPTIONS]                                
+Usage: reggie-build sync build-system [OPTIONS]                                
                                                                                 
  Synchronize build-system configuration from the root project to member         
  projects.                                                                      
@@ -231,9 +229,7 @@ uv run reggie-build sync version
 
 <!-- BEGIN:cmd reggie-build sync member-project-dependencies --help -->
 ```bash
-2026-01-05 14:12:10 [INFO] sync - Syncing member-project-dependencies
-                                                                                
- Usage: reggie-build sync member-project-dependencies [OPTIONS]                 
+Usage: reggie-build sync member-project-dependencies [OPTIONS]                 
                                                                                 
  Synchronize member project dependencies to use workspace file references.      
  Converts member project dependencies to file:// references using               
@@ -251,9 +247,7 @@ uv run reggie-build sync version
 
 <!-- BEGIN:cmd reggie-build sync member-project-tool --help -->
 ```bash
-2026-01-05 14:12:10 [INFO] sync - Syncing member-project-tool
-                                                                                
- Usage: reggie-build sync member-project-tool [OPTIONS]                         
+Usage: reggie-build sync member-project-tool [OPTIONS]                         
                                                                                 
  Synchronize tool.member-project configuration from the root project to member  
  projects.                                                                      
@@ -272,9 +266,7 @@ uv run reggie-build sync version
 
 <!-- BEGIN:cmd reggie-build sync ruff --help -->
 ```bash
-2026-01-05 14:12:10 [INFO] sync - Syncing ruff
-                                                                                
- Usage: reggie-build sync ruff [OPTIONS]                                        
+Usage: reggie-build sync ruff [OPTIONS]                                        
                                                                                 
  Run ruff formatter on git-tracked Python files.                                
  Formats all Python files tracked by git using the ruff formatter. If ruff is   
@@ -286,9 +278,7 @@ uv run reggie-build sync version
 
 <!-- BEGIN:cmd reggie-build sync version --help -->
 ```bash
-2026-01-05 14:12:10 [INFO] sync - Syncing version
-                                                                                
- Usage: reggie-build sync version [OPTIONS] [VERSION]                           
+Usage: reggie-build sync version [OPTIONS] [VERSION]                           
                                                                                 
  Synchronize project versions across selected projects.                         
  Updates the version field in pyproject.toml for all selected projects. If no   
@@ -384,6 +374,101 @@ The generator produces:
 - Abstract API contract base classes for clean implementation patterns
 - Request/response logging and debugging support
 - Proper separation between generated code and business logic
+
+### README
+
+<!-- BEGIN:cmd reggie-build readme update-cmd --help -->
+```bash
+Usage: reggie-build readme update-cmd [OPTIONS]                                
+                                                                                
+ Update README command sentinel blocks.                                         
+ Only blocks whose command matches --filter are executed and updated.           
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --readme  -r                FILE     Path to README file to update.          │
+│                                      [default: README.md]                    │
+│ --write       --no-write             Write changes back to the README file.  │
+│                                      [default: write]                        │
+│ --jobs    -j                INTEGER  Maximum number of parallel commands.    │
+│                                      [default: 13]                           │
+│ --filter                    TEXT     Regex to select which BEGIN:cmd blocks  │
+│                                      to update.                              │
+│                                      [default: None]                         │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+<!-- END:cmd reggie-build readme update-cmd --help -->
+
+Automatically update README.md files by executing help commands embedded in sentinel blocks.
+
+```bash
+# Update all command blocks in README
+uv run reggie-build readme update-cmd
+
+# Specify a different README file
+uv run reggie-build readme update-cmd --readme docs/CLI.md
+
+# Only update specific commands (filter by regex)
+uv run reggie-build readme update-cmd --filter "sync"
+
+# Preview changes without writing
+uv run reggie-build readme update-cmd --write false
+
+# Control parallelism
+uv run reggie-build readme update-cmd --jobs 4
+```
+
+> **Note**: This README's command documentation was automatically generated using `reggie-build readme update-cmd`, which executes commands and embeds their help output into sentinel blocks.
+
+
+#### How It Works
+
+The `readme update-cmd` command looks for sentinel blocks in your README:
+
+```markdown
+
+<!-- BEGIN:cmd reggie-build sync --help -->
+```bash
+Usage: reggie-build sync [OPTIONS] COMMAND [ARGS]...                           
+                                                                                
+ Synchronize all configuration across member projects.                          
+ When run without a subcommand, executes all registered sync commands against   
+ the selected projects. This includes build-system config, dependencies, tool   
+ settings, formatting, and versioning.                                          
+ Use --project to limit which projects are affected, or omit to sync all        
+ workspace members.                                                             
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --project  -p      TEXT  Optional list of project names or identifiers to    │
+│                          sync                                                │
+│                          [default: None]                                     │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Commands ───────────────────────────────────────────────────────────────────╮
+│ build-system                  Synchronize build-system configuration from    │
+│                               the root project to member projects.           │
+│ member-project-dependencies   Synchronize member project dependencies to use │
+│                               workspace file references.                     │
+│ member-project-tool           Synchronize tool.member-project configuration  │
+│                               from the root project to member projects.      │
+│ ruff                          Run ruff formatter on git-tracked Python       │
+│                               files.                                         │
+│ version                       Synchronize project versions across selected   │
+│                               projects.                                      │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+<!-- END:cmd reggie-build sync --help -->
+
+```
+
+It executes the command between `BEGIN:cmd` and `--help`, captures the output, and replaces the content between the BEGIN and END markers with a formatted code block containing the command's output.
+
+**Features**:
+- **Parallel Execution**: Runs multiple commands in parallel for faster updates
+- **Smart Help Filtering**: Automatically removes `--help` option rows from help output to reduce noise
+- **Empty Section Removal**: Removes empty Options sections when `--help` is the only option
+- **Selective Updates**: Use `--filter` to update only specific commands
+- **Safe by Default**: Preview mode available with `--write false`
+
+This approach ensures your documentation stays in sync with actual command behavior, preventing documentation drift.
 
 ## Adopting reggie-build in Your Project
 
@@ -495,6 +580,16 @@ Key functions:
 
 Key class:
 - `Project`: Wraps a pyproject.toml with methods for accessing metadata, checking workspace membership, and iterating member projects
+
+### readme.py
+
+Automated README documentation updater that executes commands and embeds their output in sentinel blocks. Keeps documentation synchronized with actual command behavior.
+
+Key features:
+- Parallel command execution for fast updates
+- Smart filtering of help output (removes `--help` rows, empty sections)
+- Selective updates via regex filtering
+- Safe preview mode
 
 ### sync.py
 
