@@ -131,6 +131,8 @@ def _log_command(cmd: CommandInfo | str):
         cmd_name = cmd.name
         if not cmd_name:
             cmd_name = getattr(cmd.callback, "__name__", None)
+            if cmd_name:
+                cmd_name = cmd_name.replace("_", "-")
     else:
         cmd_name = cmd
     LOG.info(f"Syncing {cmd_name}")
