@@ -15,20 +15,26 @@ project metadata.
 import fnmatch
 import functools
 import pathlib
+import re
 import subprocess
+from io import IOBase
+from urllib.request import urlopen
 from itertools import chain
 from os import PathLike
-from typing import Iterable
+from typing import Iterable, IO, Mapping
+from urllib.parse import urlparse, ParseResult
 
 import tomlkit
 import typer
+from tomlkit import TOMLDocument
 
 from reggie_build import utils
 
-LOG = utils.logger(__file__)
 
 # Standard filename for Python project configuration files
 PYPROJECT_FILE_NAME = "pyproject.toml"
+_PYPROJECT_SOURCE = Mapping | PathLike | str | bytes | IO | None
+_HTTP_URL_RE = re.compile(r"^https?://", re.IGNORECASE)
 
 
 def option(**kwargs):
@@ -121,31 +127,25 @@ def dir(input: PathLike | str, match_member: bool = True) -> pathlib.Path | None
 
 
 @functools.cache
-def root_dir() -> pathlib.Path:
-    """
-    Return the repository root directory.
-
-    Attempts to find the workspace root using git when available. Falls back to
-    locating the root by finding the pyproject.toml file relative to this module's
-    location when git is unavailable or the workspace is outside a git repository.
-
-    Returns:
-        Path to the workspace root directory
-
-    Raises:
-        ValueError: If the root directory cannot be determined
-    """
+def root_pyproject() -> "PyProject":
     try:
-        out = subprocess.check_output(
+        if top_level := subprocess.check_output(
             ["git", "rev-parse", "--show-toplevel"], text=True
-        ).strip()
-        if d := dir(out, match_member=False) if out else None:
-            return d
-    except subprocess.CalledProcessError:
+        ).strip():
+            return PyProject(source=top_level)
+    except Exception:
         pass
-    # When git is unavailable or the file is outside a repo, use the parent dir
-    if d := dir(__file__, match_member=False):
-        return d
+    for p in [pathlib.Path.cwd(), pathlib.Path(__file__).parent]:
+        try:
+            return PyProject(source=p)
+        except Exception:
+            pass
+    raise ValueError(f"Root {PYPROJECT_FILE_NAME} not found")
+
+
+def root_dir() -> pathlib.Path:
+    if source_file := root_pyproject().source_file:
+        return source_file.parent
     raise ValueError("Root dir not found")
 
 
@@ -168,6 +168,161 @@ def scripts_dir() -> pathlib.Path:
         if file.is_relative_to(p.dir):
             return p.dir
     return file.parent
+
+
+class PyProject(TOMLDocument):
+    def __init__(self, *args, source: _PYPROJECT_SOURCE = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.source = source
+        self.reload(_reload_io=True)
+
+    @property
+    def source_file(self) -> pathlib.Path | None:
+        source = self.source
+        if PyProject._to_url(source) is None:
+            return PyProject._to_file(source)
+        return None
+
+    def reload(self, _reload_io=False) -> bool:
+        source = self.source
+        data: Mapping | None = None
+        if source is None:
+            data = dict()
+        else:
+            if source_url := PyProject._to_url(source):
+                with urlopen(source_url.geturl()) as fp:
+                    data = tomlkit.load(fp)
+            elif source_file := PyProject._to_file(source):
+                if source_file.is_file():
+                    with source_file.open("r") as fp:
+                        data = tomlkit.load(fp)
+                else:
+                    data = dict()
+            elif isinstance(source, (str, bytes)):
+                data = tomlkit.parse(source)
+            elif isinstance(source, IO):
+                if _reload_io:
+                    with source as fp:
+                        data = tomlkit.load(fp)
+            else:
+                data = source
+        if data is None:
+            raise ValueError(f"Reload failed - source:{source}")
+        self.clear()
+        if data:
+            self.update(data)
+            return True
+        else:
+            return False
+
+    def persist(self, force: bool = False) -> bool:
+        if source_file := self.source_file:
+            text = PyProject._clean_yaml(tomlkit.dumps(self))
+            if not force:
+                source_file_text = (
+                    source_file.read_text() if source_file.exists() else None
+                )
+                if text == source_file_text:
+                    return False
+            source_file.parent.mkdir(parents=True, exist_ok=True)
+            with source_file.open("w") as fp:
+                fp.write(text)
+            return True
+        raise ValueError(f"Persist failed - source:{self.source}")
+
+    def is_workspace(self) -> bool:
+        return (
+            True if self.get("tool", {}).get("uv", {}).get("workspace", None) else False
+        )
+
+    def __str__(self) -> str:
+        out = {}
+        if source := self.source:
+            out["__source__"] = source
+        if value := self.value:
+            out.update(value)
+        return str(out)
+
+    @staticmethod
+    def _to_file(source: _PYPROJECT_SOURCE) -> pathlib.Path | None:
+        if source is None:
+            return None
+        elif isinstance(source, str):
+            source = source.strip()
+            if not source or "\n" in source or "\r" in source:
+                return None
+        if isinstance(source, (str, PathLike)):
+            try:
+                source_path = pathlib.Path(source).resolve()
+            except Exception:
+                return None
+        else:
+            return None
+        source_path_name_valid = PYPROJECT_FILE_NAME == source_path.name
+        if source_path.exists():
+            if source_path.is_dir():
+                return source_path / PYPROJECT_FILE_NAME
+            elif source_path_name_valid and source_path.is_file():
+                return source_path
+            else:
+                return None
+        else:
+            return (
+                source_path
+                if source_path_name_valid
+                else (source_path / PYPROJECT_FILE_NAME)
+            )
+
+    @staticmethod
+    def _to_url(source: _PYPROJECT_SOURCE) -> ParseResult | None:
+        if isinstance(source, str):
+            source = source.strip()
+            if bool(_HTTP_URL_RE.match(source)):
+                try:
+                    return urlparse(source)
+                except Exception:
+                    pass
+        return None
+
+    @staticmethod
+    def _clean_yaml(yaml: str) -> str | None:
+        if yaml:
+            yaml = yaml.strip()
+        if not yaml:
+            return None
+        lines = yaml.splitlines()
+        out = []
+        prev_blank = False
+
+        for line in lines:
+            blank = not line.strip()
+            if blank and prev_blank:
+                continue
+            out.append(line)
+            prev_blank = blank
+
+        yaml = "\n".join(out).strip()
+        return yaml + "\n" if yaml else ""
+
+
+def _workspace_tree():
+    args = ["uv", "tree", "--verbose"]
+    proc = subprocess.Popen(
+        args,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+    )
+
+    assert proc.stderr is not None
+
+    for line in proc.stderr:
+        print(line)
+
+    rc = proc.wait()
+    if rc != 0:
+        raise subprocess.CalledProcessError(rc, args)
 
 
 class Project:
@@ -208,7 +363,6 @@ class Project:
             raise ValueError(
                 f"Project {PYPROJECT_FILE_NAME} error - path:{self.pyproject_file} error:{e}"
             )
-        LOG.debug(f"Loaded {PYPROJECT_FILE_NAME} - path:{path} dir:{self.dir}")
 
     @property
     def name(self):
@@ -296,3 +450,24 @@ class Project:
             String showing the project name and directory name
         """
         return f"{Project.__name__}(name={self.name!r} dir={self.dir.name!r})"
+
+
+if __name__ == "__main__":
+    _workspace_tree()
+    dir = root_dir()
+    print(PyProject(source=dir))
+    # print(PyProject(source="https://raw.githubusercontent.com/reggie-db/reggie-build-py/refs/heads/main/pyproject.toml").persist())
+    proj = PyProject(source="/Users/reggie.pierce/Projects/reggie-build-py")
+    print(proj)
+    print(proj.reload())
+    print(proj)
+    print(proj.persist())
+    print(
+        PyProject(source="/Users/reggie.pierce/Projects/reggie-build-py").is_workspace()
+    )
+    print(
+        PyProject(
+            source="/Users/reggie.pierce/Projects/reggie-bricks-py/pyproject.toml"
+        ).is_workspace()
+    )
+    print(root_dir())
