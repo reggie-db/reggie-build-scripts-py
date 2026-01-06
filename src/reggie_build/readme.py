@@ -144,7 +144,7 @@ def update_cmd(
     Only blocks whose command matches --filter are executed and updated.
     """
     if not readme.exists():
-        readme = projects.root_dir() / readme
+        readme = projects.root().file.parent / readme
         if not readme.exists():
             raise ValueError(f"README file not found at {readme}")
 

@@ -15,7 +15,7 @@ import tomlkit
 import typer
 
 from reggie_build import projects, sync
-from reggie_build.projects import Project
+from reggie_build.projects import PyProject
 from reggie_build.utils import logger
 
 LOG = logger(__file__)
@@ -68,13 +68,14 @@ def member(
     The project name is used for both the directory and package name (with hyphens
     converted to underscores for the package).
     """
+    root_dir = projects.root().file.parent
     if path:
         path = path.resolve()
         # Ensure the specified path is within the workspace root
-        if not path.is_relative_to(projects.root_dir()):
+        if not path.is_relative_to(root_dir):
             raise ValueError(f"Invalid path: {path}")
     else:
-        path = projects.root_dir()
+        path = root_dir
 
     project_dir = path / name
     pyproject_path = project_dir / projects.PYPROJECT_FILE_NAME
@@ -98,11 +99,17 @@ def member(
 
     if project_dependencies:
         # Add project dependencies as a multiline TOML array
+        member_projects = projects.root().members()
         deps = tomlkit.array()
         deps.multiline(True)
         for dep in project_dependencies:
-            dep_dir = projects.dir(dep)
-            dep_project = Project(dep_dir)
+            dep_project: PyProject | None = None
+            for member_project in member_projects:
+                if member_project.name == dep:
+                    dep_project = member_project
+                    break
+            if not dep_project:
+                raise ValueError(f"Invalid project dependency: {dep}")
             deps.append(dep_project.name)
         pyproject["project"]["dependencies"] = deps
 
@@ -112,5 +119,5 @@ def member(
     package_dir = project_dir / "src" / name.replace("-", "_")
     package_dir.mkdir(parents=True, exist_ok=True)
     (package_dir / "__init__.py").touch()
-    sync.all([projects.Project(pyproject_path)])
+    sync.all([PyProject(pyproject_path)])
     LOG.info(f"Member project created: {name}")

@@ -23,7 +23,6 @@ import shutil
 import subprocess
 import sys
 import time
-from copy import deepcopy
 from typing import Any, Mapping
 
 import tomlkit
@@ -33,6 +32,19 @@ from reggie_build import projects
 
 # Default version string used when git version cannot be determined
 DEFAULT_VERSION = "0.0.1"
+
+
+def clean_text(text: str) -> str:
+    text = "" if text is None else text.strip()
+    if text:
+        lines = text.splitlines()
+        out = []
+        for line in lines:
+            line = line.strip()
+            if line or (out and out[-1]):
+                out.append(line)
+        text = "\n".join(out).rstrip()
+    return text + "\n" if text else ""
 
 
 def mapping_get(data: Mapping | None, *path: str, default: Any = None) -> Any:
@@ -288,7 +300,7 @@ def dev_local() -> pathlib.Path:
     Returns:
         Path to the dev-local directory
     """
-    root_dir = projects.root_dir()
+    root_dir = projects.root().file.parent
     return root_dir / "dev-local"
 
 

@@ -175,8 +175,8 @@ Usage: reggie-build sync [OPTIONS] COMMAND [ARGS]...
  workspace members.                                                             
                                                                                 
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
-│ --project  -p      TEXT  Optional list of project names or identifiers to    │
-│                          sync                                                │
+│ --project  -p      PROJECT  Optional list of project names or identifiers to │
+│                             sync                                             │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Commands ───────────────────────────────────────────────────────────────────╮
 │ build-system                  Synchronize build-system configuration from    │
@@ -214,7 +214,7 @@ uv run reggie-build sync version
 
 <!-- BEGIN:cmd reggie-build sync build-system --help -->
 ```bash
-2026-01-06 12:03:54 [INFO] sync - Syncing build-system
+2026-01-06 16:15:15 [INFO] sync - Syncing build-system
                                                                                 
  Usage: reggie-build sync build-system [OPTIONS]                                
                                                                                 
@@ -225,8 +225,8 @@ uv run reggie-build sync version
  projects, ensuring consistent build tooling across the workspace.              
                                                                                 
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
-│ --project  -p      TEXT  Optional list of project names or identifiers to    │
-│                          sync                                                │
+│ --project  -p      PROJECT  Optional list of project names or identifiers to │
+│                             sync                                             │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 <!-- END:cmd reggie-build sync build-system --help -->
@@ -235,7 +235,7 @@ uv run reggie-build sync version
 
 <!-- BEGIN:cmd reggie-build sync member-project-dependencies --help -->
 ```bash
-2026-01-06 12:03:54 [INFO] sync - Syncing member-project-dependencies
+2026-01-06 16:15:15 [INFO] sync - Syncing member-project-dependencies
                                                                                 
  Usage: reggie-build sync member-project-dependencies [OPTIONS]                 
                                                                                 
@@ -245,8 +245,8 @@ uv run reggie-build sync version
  ${PROJECT_ROOT} placeholders and updates tool.uv.sources accordingly.          
                                                                                 
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
-│ --project  -p      TEXT  Optional list of project names or identifiers to    │
-│                          sync                                                │
+│ --project  -p      PROJECT  Optional list of project names or identifiers to │
+│                             sync                                             │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 <!-- END:cmd reggie-build sync member-project-dependencies --help -->
@@ -255,7 +255,7 @@ uv run reggie-build sync version
 
 <!-- BEGIN:cmd reggie-build sync member-project-tool --help -->
 ```bash
-2026-01-06 12:03:54 [INFO] sync - Syncing member-project-tool
+2026-01-06 16:15:15 [INFO] sync - Syncing member-project-tool
                                                                                 
  Usage: reggie-build sync member-project-tool [OPTIONS]                         
                                                                                 
@@ -266,8 +266,8 @@ uv run reggie-build sync version
  selected projects.                                                             
                                                                                 
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
-│ --project  -p      TEXT  Optional list of project names or identifiers to    │
-│                          sync                                                │
+│ --project  -p      PROJECT  Optional list of project names or identifiers to │
+│                             sync                                             │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 <!-- END:cmd reggie-build sync member-project-tool --help -->
@@ -276,7 +276,7 @@ uv run reggie-build sync version
 
 <!-- BEGIN:cmd reggie-build sync ruff --help -->
 ```bash
-2026-01-06 12:03:54 [INFO] sync - Syncing ruff
+2026-01-06 16:15:15 [INFO] sync - Syncing ruff
                                                                                 
  Usage: reggie-build sync ruff [OPTIONS]                                        
                                                                                 
@@ -292,7 +292,7 @@ uv run reggie-build sync version
 
 <!-- BEGIN:cmd reggie-build sync version --help -->
 ```bash
-2026-01-06 12:03:54 [INFO] sync - Syncing version
+2026-01-06 16:15:15 [INFO] sync - Syncing version
                                                                                 
  Usage: reggie-build sync version [OPTIONS] [VERSION]                           
                                                                                 
@@ -308,8 +308,8 @@ uv run reggie-build sync version
 │                           defaults to 0.0.1.                                 │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
-│ --project  -p      TEXT  Optional list of project names or identifiers to    │
-│                          sync                                                │
+│ --project  -p      PROJECT  Optional list of project names or identifiers to │
+│                             sync                                             │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 <!-- END:cmd reggie-build sync version --help -->
@@ -454,8 +454,8 @@ Usage: reggie-build sync [OPTIONS] COMMAND [ARGS]...
  workspace members.                                                             
                                                                                 
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
-│ --project  -p      TEXT  Optional list of project names or identifiers to    │
-│                          sync                                                │
+│ --project  -p      PROJECT  Optional list of project names or identifiers to │
+│                             sync                                             │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Commands ───────────────────────────────────────────────────────────────────╮
 │ build-system                  Synchronize build-system configuration from    │
@@ -584,15 +584,13 @@ FastAPI code generation from OpenAPI specs with synchronization and watch mode s
 
 ### projects.py
 
-Project discovery, loading, and manipulation. Provides the `Project` class for working with `pyproject.toml` files using benedict for dynamic attribute access.
+Project discovery, loading, and manipulation. Provides the `PyProject` class for working with `pyproject.toml` files as structured tomlkit documents.
 
 Key functions:
-- `root()`: Get the root workspace project
-- `root_dir()`: Get the workspace root directory path
-- `dir(input)`: Find project directory by path or name
+- `root()`: Get the root workspace PyProject
 
 Key class:
-- `Project`: Wraps a pyproject.toml with methods for accessing metadata, checking workspace membership, and iterating member projects
+- `PyProject`: Extends tomlkit.TOMLDocument to wrap a pyproject.toml with methods for accessing metadata, checking workspace membership, iterating member projects, and persisting changes with automatic pruning
 
 ### readme.py
 
@@ -606,15 +604,36 @@ Key features:
 
 ### sync.py
 
-Configuration synchronization across workspace projects. Commands can be run individually or all together via the main sync callback.
+Configuration synchronization across workspace projects. Coordinates build-system settings, dependencies, tool configurations, and version strings.
+
+Key commands:
+- `build_system`: Sync [build-system] from root to members
+- `member_project_dependencies`: Convert member dependencies to workspace file references
+- `member_project_tool`: Sync [tool.member-project] configuration
+- `ruff`: Format code with ruff
+- `version`: Synchronize version strings
 
 ### utils.py
 
-Common utilities including:
-- Logging configuration with stdout/stderr separation
-- File watching for continuous workflows
-- Git integration for version strings and file tracking
-- Executable discovery with caching
+General utilities including logging, git integration, file watching, and mapping manipulation.
+
+Key utilities:
+- `mapping_get/set/update/prune`: Nested dictionary path utilities for working with pyproject.toml
+- `logger()`: Configured logger with stdout/stderr separation
+- `watch_file()`: Monitor files for changes with hash-based detection
+- `git_version()`, `git_files()`: Git integration helpers
+- `dev_local()`: Get the dev-local directory for generated code
+
+### workspaces.py
+
+Workspace discovery and metadata utilities using `uv workspace metadata` command.
+
+Key classes:
+- `WorkspaceMetadata`: Represents workspace root and member projects
+- `WorkspaceProject`: Represents a single project within a workspace
+
+Key functions:
+- `metadata(cwd)`: Discover workspace metadata from uv
 
 ## Development
 
@@ -623,7 +642,6 @@ Common utilities including:
 Core dependencies:
 - `typer`: CLI framework
 - `tomlkit`: TOML manipulation
-- `python-benedict`: Dictionary with dot notation
 - `fastapi-code-generator`: OpenAPI to FastAPI conversion
 - `packaging`: Version handling
 

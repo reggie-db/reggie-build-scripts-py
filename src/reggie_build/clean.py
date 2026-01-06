@@ -34,14 +34,12 @@ def build_artifacts():
 
     It protects the root .venv and scripts directory from deletion.
     """
-    root = projects.root_dir()
-    root_venv = root / ".venv"
+    root_dir = projects.root().file.parent
+    root_venv = root_dir / ".venv"
 
     excludes = [
         # Exclude the root virtual environment to avoid accidental deletion
-        lambda p: p.name == ".venv" and p.parent == root,
-        # Exclude the scripts directory to avoid deleting the source code of this tool
-        lambda p: projects.scripts_dir() in p.parents,
+        lambda p: p.name == ".venv" and p.parent == root_dir,
     ]
 
     matchers = [
@@ -52,10 +50,10 @@ def build_artifacts():
         # Match Python egg-info directories
         lambda p: p.name.endswith(".egg-info"),
         # Match root dist folder
-        lambda p: p.name == "dist" and p.is_dir() and p.parent == root,
+        lambda p: p.name == "dist" and p.is_dir() and p.parent == root_dir,
     ]
 
-    for root_path, dir_names, _ in os.walk(root):
+    for root_path, dir_names, _ in os.walk(root_dir):
         path = pathlib.Path(root_path)
 
         # Skip excluded directories

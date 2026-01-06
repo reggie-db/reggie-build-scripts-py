@@ -16,101 +16,69 @@ import inspect
 import re
 import subprocess
 from copy import deepcopy
-from typing import Annotated, Any, Callable, Iterable, Mapping
+from typing import Annotated, Callable, Iterable, Mapping
 
 import click
-import tomlkit
 import typer
 from typer.models import CommandInfo
 
-from reggie_build import projects, utils
-from reggie_build.projects import Project
+from reggie_build import projects, utils, workspaces
+from reggie_build.projects import PyProject
 from reggie_build.utils import logger
 
 LOG = logger(__file__)
 
 
-def _sync_projects_option_callback(ctx: typer.Context, sync_projects: Iterable[Any]):
-    """
-    Callback for processing sync project options from CLI.
+class ProjectParamType(click.ParamType):
+    name = "Project"
 
-    Converts project identifiers to Project objects and stores them in context metadata
-    for later use by the sync result callback.
+    def convert(self, value, param, ctx):
+        workspace_metadata = workspaces.metadata()
+        if value == workspace_metadata.root.name:
+            return PyProject(source=workspace_metadata)
+        for member in workspace_metadata.members:
+            if member.name == value:
+                return PyProject(source=member)
+        return PyProject(source=workspaces.metadata(value))
 
-    Args:
-        ctx: Typer context object containing command metadata
-        sync_projects: Iterable of project identifiers (names or Project objects)
 
-    Returns:
-        List of Project objects
-    """
-    sync_projects_empty = not sync_projects
-    sync_projects = list(_projects(sync_projects))
-    ctx.meta["sync_projects"] = sync_projects
-    sync_project_names = [] if sync_projects_empty else [p.name for p in sync_projects]
-    sync_projects_log_key = "sync_projects_log"
-    if sync_project_names and not ctx.meta.get(sync_projects_log_key, None):
-        ctx.meta[sync_projects_log_key] = True
-        LOG.info(f"Syncing projects: {', '.join(sync_project_names)}")
+def _projects_meta(ctx: typer.Context) -> list[PyProject]:
+    return ctx.meta.setdefault("pyprojects", [])
 
-    return sync_projects
+
+def _projects_persist(pyprojects: Iterable[PyProject]):
+    for pyproject in pyprojects:
+        if pyproject.persist():
+            LOG.info(f"Persisted {pyproject.file}")
+
+
+def _projects_callback(ctx: typer.Context, pyprojects: list[PyProject]):
+    if not pyprojects:
+        pyprojects = list(projects.root().projects())
+    if not pyprojects:
+        raise typer.BadParameter("No projects found")
+    _projects_meta(ctx).extend(pyprojects)
+    return pyprojects
+
+
+_PROJECTS_OPTION = Annotated[
+    list[PyProject],
+    typer.Option(
+        "-p",
+        "--project",
+        click_type=ProjectParamType(),
+        callback=_projects_callback,
+        help="Optional list of project names or identifiers to sync",
+    ),
+]
 
 
 @click.pass_context
-def _sync_result_callback(ctx: typer.Context, *_, **__):
-    """
-    Result callback for sync commands that persists project changes.
-
-    This callback is invoked after sync commands complete to save any modifications
-    made to project pyproject.toml files.
-
-    Args:
-        ctx: Typer context object containing command metadata
-        _: Unused parameter (required by Typer callback signature)
-    """
-    if sync_projects := ctx.meta.get("sync_projects", None):
-        _persist_projects(sync_projects)
+def _result_callback(ctx: typer.Context, *_, **__):
+    _projects_persist(_projects_meta(ctx))
 
 
-def _persist_projects(
-    projs: Iterable[Any] = None, prune: bool = True, force: bool = False
-):
-    """
-    Save pyproject.toml changes to disk for specified projects.
-
-    Writes the pyproject configuration back to the pyproject.toml file for each
-    project, but only if the content has changed. Optionally prunes empty values
-    from the configuration before saving.
-
-    Args:
-        projs: Optional iterable of project identifiers to persist.
-               If None, persists all workspace member projects.
-        prune: If True, removes empty values from configuration before saving
-    """
-    projects_updated = False
-    for proj in _projects(projs):
-        file = proj.pyproject_file
-        doc = proj.pyproject
-        # Remove empty values to keep configuration clean
-        if prune:
-            utils.mapping_prune(doc)
-        text = tomlkit.dumps(doc).strip() + "\n"
-        if not force:
-            current_text = file.read_text() if file.exists() else None
-            if text == current_text:
-                continue
-        # Only write if content has changed or forced
-        file.write_text(text)
-        projects_updated = True
-        LOG.info(f"Project updated:{file}")
-    if not projects_updated:
-        LOG.info("No changes made to projects")
-
-
-app = typer.Typer(result_callback=_sync_result_callback)
-_PROJECTS_OPTION = Annotated[
-    list[str], projects.option(callback=_sync_projects_option_callback)
-]
+app = typer.Typer(result_callback=_result_callback)
 
 
 @app.callback(invoke_without_command=True)
@@ -130,12 +98,13 @@ def _callback(
     """
     if invoked_subcommand := ctx.invoked_subcommand:
         _sync_log(invoked_subcommand)
+        _projects_meta(ctx).clear()
     else:
         # persist handled by callbacks
-        all(_projects(sync_projects), persist=False)
+        all(sync_projects, persist=False)
 
 
-def all(projs: Iterable[Project], persist: bool = True):
+def all(projs: list[PyProject], persist: bool = True):
     """
     Execute all registered sync commands for the specified projects.
 
@@ -154,7 +123,7 @@ def all(projs: Iterable[Project], persist: bool = True):
         sig = inspect.signature(callback)
         callback(projs) if len(sig.parameters) >= 1 else callback()
     if persist:
-        _persist_projects(projs, force=True)
+        _projects_persist(projs)
 
 
 def _sync_log(cmd: CommandInfo | str):
@@ -176,14 +145,14 @@ def build_system(
     projects, ensuring consistent build tooling across the workspace.
     """
     key = "build-system"
-    data = projects.root().pyproject.get(key, None)
+    data = projects.root().get(key, None)
     if not data:
         LOG.warning("No build-system section found")
         return
 
-    def _set(p: Project):
+    def _set(p: PyProject):
         """Update the build-system section for a project."""
-        p.pyproject[key] = deepcopy(data)
+        p[key] = deepcopy(data)
 
     _update_projects(_set, sync_projects)
 
@@ -215,11 +184,10 @@ def member_project_dependencies(
         m = re.match(r"^\s*([\w\-\.\[\]]+)\s*@\s*file://", dep)
         return m.group(1) if m else dep
 
-    def _set(p: Project):
+    def _set(pyproject: PyProject):
         """Update member project dependencies for a project."""
 
-        doc = p.pyproject
-        deps = utils.mapping_get(doc, "project", "dependencies", default=[])
+        deps = utils.mapping_get(pyproject, "project", "dependencies", default=[])
         member_deps: list[str] = []
 
         for i in range(len(deps)):
@@ -229,7 +197,7 @@ def member_project_dependencies(
             # Use a relative file reference with a placeholder for the workspace root
             deps[i] = f"{dep} @ file://${{PROJECT_ROOT}}/../{dep}"
             member_deps.append(dep)
-        sources = utils.mapping_get(doc, "tool", "uv", "sources")
+        sources = utils.mapping_get(pyproject, "tool", "uv", "sources")
         if isinstance(sources, Mapping):
             # Clean up obsolete workspace sources
             for k in list(sources.keys()):
@@ -240,7 +208,7 @@ def member_project_dependencies(
             # Add or update tool.uv.sources for workspace members
             for dep in member_deps:
                 utils.mapping_set(
-                    doc, "tool", "uv", "sources", dep, "workspace", value=True
+                    pyproject, "tool", "uv", "sources", dep, "workspace", value=True
                 )
 
     _update_projects(_set, sync_projects)
@@ -256,12 +224,12 @@ def member_project_tool(
     Copies the [tool.member-project] section from the root pyproject.toml to all
     selected projects.
     """
-    data = utils.mapping_get(projects.root().pyproject, "tool", "member-project")
+    data = utils.mapping_get(projects.root(), "tool", "member-project")
 
-    def _set(p: Project):
+    def _set(p: PyProject):
         """Update the tool.member-project section for a project."""
         if not p.is_root and data:
-            utils.mapping_update(p.pyproject, data)
+            utils.mapping_update(p, data)
 
     _update_projects(_set, sync_projects)
 
@@ -283,7 +251,8 @@ def ruff(
     If ruff is not installed, either warns or fails depending on the
     require parameter.
     """
-    if not utils.which("ruff"):
+    ruff = utils.which("ruff")
+    if not ruff:
         message = "ruff not installed"
         if require:
             raise ValueError(message)
@@ -295,14 +264,22 @@ def ruff(
         return
 
     py_files = [str(f) for f in git_files if f.name.endswith(".py")]
-    proc = subprocess.run(
-        ["ruff", "format", *py_files],
-        check=True,
-        stdout=subprocess.PIPE,
-    )
-    stdout = proc.stdout.decode("utf-8").strip()
-    if stdout and "reformatted" in stdout:
-        LOG.info(f"ruff: {stdout}")
+    run_arg_options = {
+        "check": [
+            "--select",
+            "UP007,UP006,F401,I",
+            "--fix",
+        ],
+        "format": [],
+    }
+    for arg, options in run_arg_options.items():
+        process_args = [str(ruff), arg, *py_files, *options]
+        out = subprocess.check_output(
+            process_args,
+            text=True,
+        ).strip()
+        if out:
+            LOG.info(f"ruff: {out}")
 
 
 @app.command()
@@ -326,20 +303,21 @@ def version(
     if not version:
         version = utils.git_version() or utils.DEFAULT_VERSION
 
-    def _set(p: Project):
+    def _set(pyproject: PyProject):
         """Update the project version."""
-        pyproject = p.pyproject
         pyproject_version = utils.mapping_get(pyproject, "project", "version")
         if version != pyproject_version:
-            utils.mapping_set(p.pyproject, "project", "version", value=version)
-            LOG.info(f"Updated {p.name} version: {pyproject_version} -> {version}")
+            utils.mapping_set(pyproject, "project", "version", value=version)
+            LOG.info(
+                f"Updated {pyproject.name} version: {pyproject_version} -> {version}"
+            )
 
     _update_projects(_set, sync_projects)
 
 
 def _update_projects(
-    pyproject_fn: Callable[[Project], None],
-    projs: Iterable[Project | str] | None,
+    pyproject_fn: Callable[[PyProject], None],
+    projs: list[PyProject] | None,
 ):
     """
     Apply a pyproject update function to multiple projects.
@@ -349,47 +327,14 @@ def _update_projects(
 
     Args:
         pyproject_fn: Function that takes a Project and modifies its pyproject
-        projs: Project identifiers to update
-        include_scripts: Whether to include the scripts project in updates
+        projs: PyProject identifiers to update
     """
-    for proj in _projects(projs):
+    for proj in projs:
         pyproject_fn(proj)
 
 
-def _projects(projs: Iterable[Any] | None = None) -> Iterable[Project]:
-    """
-    Resolve project identifiers into Project objects.
-
-    Converts a mix of Project instances and string identifiers into
-    a consistent stream of Project objects.
-
-    Args:
-        projs: Optional list of projects or project identifiers. If None,
-               defaults to all workspace members.
-
-    Yields:
-        Project instances for each resolved project
-    """
-    if not projs:
-        projs = projects.root().members()
-        root_proj = projects.root()
-        if utils.mapping_get(root_proj.pyproject, "project"):
-            projs = set(projs)
-            projs.add(root_proj)
-
-    for proj in projs:
-        if isinstance(proj, Project):
-            yield proj
-            continue
-
-        LOG.debug(f"Resolving project identifier: {proj}")
-        project_dir = projects.dir(proj)
-        if not project_dir:
-            raise ValueError(f"Project {proj} not found")
-        yield Project(project_dir)
-
-
 if __name__ == "__main__":
-    projs = list(_projects())
-    version(projs)
-    _persist_projects(projs)
+    from typer.testing import CliRunner
+
+    runner = CliRunner()
+    runner.invoke(app, ["-p", "reggie-build"], catch_exceptions=False)
