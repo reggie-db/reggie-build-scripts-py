@@ -23,6 +23,7 @@ import shutil
 import subprocess
 import sys
 import time
+from os import PathLike
 from typing import Any, Callable, Mapping, MutableMapping, TextIO, TypeVar
 from urllib.parse import urlparse
 
@@ -480,6 +481,7 @@ def exec(
         args: Command and arguments as list or single string
         cwd: Working directory to run command in
         stderr_log_level: Log level for stderr output, or None to suppress
+        strip: strip output, defaults to True
 
     Returns:
         Command stdout as a string (trailing whitespace stripped)
@@ -490,7 +492,9 @@ def exec(
     if isinstance(args, str):
         process_args = [args]
     else:
-        process_args = [str(arg) for arg in args]
+        process_args = [
+            os.fspath(arg) if isinstance(arg, PathLike) else str(arg) for arg in args
+        ]
     _log().debug("Executing command: %s", process_args)
     proc = subprocess.Popen(
         process_args,
