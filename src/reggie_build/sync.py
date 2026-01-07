@@ -89,8 +89,9 @@ def _callback(
     workspace members.
     """
     if invoked_subcommand := ctx.invoked_subcommand:
-        _log_command(invoked_subcommand)
-        _projects_meta(ctx).clear()
+        if not utils.command_is_help(ctx):
+            _log_command(invoked_subcommand)
+            _projects_meta(ctx).clear()
     else:
         # persist handled by callbacks
         all(ctx, sync_projects)

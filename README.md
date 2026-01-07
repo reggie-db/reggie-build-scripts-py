@@ -214,9 +214,7 @@ uv run reggie-build sync version
 
 <!-- BEGIN:cmd reggie-build sync build-system --help -->
 ```bash
-2026-01-07 14:13:41 [INFO] sync - Syncing build-system
-                                                                                
- Usage: reggie-build sync build-system [OPTIONS]                                
+Usage: reggie-build sync build-system [OPTIONS]                                
                                                                                 
  Sync build-system config from root to member projects.                         
                                                                                 
@@ -234,9 +232,7 @@ uv run reggie-build sync version
 
 <!-- BEGIN:cmd reggie-build sync member-project-dependencies --help -->
 ```bash
-2026-01-07 14:13:41 [INFO] sync - Syncing member-project-dependencies
-                                                                                
- Usage: reggie-build sync member-project-dependencies [OPTIONS]                 
+Usage: reggie-build sync member-project-dependencies [OPTIONS]                 
                                                                                 
  Sync member project dependencies to workspace file references.                 
                                                                                 
@@ -254,9 +250,7 @@ uv run reggie-build sync version
 
 <!-- BEGIN:cmd reggie-build sync member-project-tool --help -->
 ```bash
-2026-01-07 14:13:41 [INFO] sync - Syncing member-project-tool
-                                                                                
- Usage: reggie-build sync member-project-tool [OPTIONS]                         
+Usage: reggie-build sync member-project-tool [OPTIONS]                         
                                                                                 
  Sync tool.member-project config from root to member projects.                  
                                                                                 
@@ -274,9 +268,7 @@ uv run reggie-build sync version
 
 <!-- BEGIN:cmd reggie-build sync ruff --help -->
 ```bash
-2026-01-07 14:13:41 [INFO] sync - Syncing ruff
-                                                                                
- Usage: reggie-build sync ruff [OPTIONS]                                        
+Usage: reggie-build sync ruff [OPTIONS]                                        
                                                                                 
  Run ruff formatter on git-tracked Python files.                                
                                                                                 
@@ -288,9 +280,7 @@ uv run reggie-build sync version
 
 <!-- BEGIN:cmd reggie-build sync version --help -->
 ```bash
-2026-01-07 14:13:41 [INFO] sync - Syncing version
-                                                                                
- Usage: reggie-build sync version [OPTIONS] [VERSION]                           
+Usage: reggie-build sync version [OPTIONS] [VERSION]                           
                                                                                 
  Sync project versions across selected projects.                                
                                                                                 
@@ -431,8 +421,6 @@ uv run reggie-build readme update-cmd --jobs 4
 #### How It Works
 
 The `readme update-cmd` command looks for sentinel blocks in your README:
-
-```markdown
 
 <!-- BEGIN:cmd reggie-build sync --help -->
 ```bash

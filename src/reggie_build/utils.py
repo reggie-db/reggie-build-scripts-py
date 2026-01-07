@@ -307,7 +307,7 @@ def mapping_prune(data: Mapping | None) -> bool:
 
 def command_is_help(ctx: typer.Context) -> bool:
     """Check if the command was invoked with --help flag."""
-    help_option_names = ctx.help_option_names
+    help_option_names = ctx.help_option_names or ["--help"]
     if help_option_names and any(arg in help_option_names for arg in sys.argv):
         return True
     return False
