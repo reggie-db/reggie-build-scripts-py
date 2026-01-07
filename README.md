@@ -175,19 +175,19 @@ Usage: reggie-build sync [OPTIONS] COMMAND [ARGS]...
  workspace members.                                                             
                                                                                 
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
-│ --project  -p      PROJECT  Optional list of project names or identifiers to │
-│                             sync                                             │
+│ --project  -p      TEXT  Optional list of workspace node/project names to    │
+│                          sync                                                │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Commands ───────────────────────────────────────────────────────────────────╮
-│ build-system                  Synchronize build-system configuration from    │
-│                               the root project to member projects.           │
-│ member-project-dependencies   Synchronize member project dependencies to use │
-│                               workspace file references.                     │
-│ member-project-tool           Synchronize tool.member-project configuration  │
-│                               from the root project to member projects.      │
+│ build-system                  Sync build-system config from root to member   │
+│                               projects.                                      │
+│ member-project-dependencies   Sync member project dependencies to workspace  │
+│                               file references.                               │
+│ member-project-tool           Sync tool.member-project config from root to   │
+│                               member projects.                               │
 │ ruff                          Run ruff formatter on git-tracked Python       │
 │                               files.                                         │
-│ version                       Synchronize project versions across selected   │
+│ version                       Sync project versions across selected          │
 │                               projects.                                      │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
@@ -214,20 +214,18 @@ uv run reggie-build sync version
 
 <!-- BEGIN:cmd reggie-build sync build-system --help -->
 ```bash
-2026-01-06 16:34:16 [INFO] workspaces - Workspace metadata loaded: /Users/reggie.pierce/Projects/reggie-build-py
-2026-01-06 16:34:16 [INFO] sync - Syncing build-system
+2026-01-07 13:58:37 [INFO] sync - Syncing build-system
                                                                                 
  Usage: reggie-build sync build-system [OPTIONS]                                
                                                                                 
- Synchronize build-system configuration from the root project to member         
- projects.                                                                      
+ Sync build-system config from root to member projects.                         
                                                                                 
  Copies the  section from the root pyproject.toml to all selected               
  projects, ensuring consistent build tooling across the workspace.              
                                                                                 
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
-│ --project  -p      PROJECT  Optional list of project names or identifiers to │
-│                             sync                                             │
+│ --project  -p      TEXT  Optional list of workspace node/project names to    │
+│                          sync                                                │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 <!-- END:cmd reggie-build sync build-system --help -->
@@ -236,19 +234,18 @@ uv run reggie-build sync version
 
 <!-- BEGIN:cmd reggie-build sync member-project-dependencies --help -->
 ```bash
-2026-01-06 16:34:16 [INFO] workspaces - Workspace metadata loaded: /Users/reggie.pierce/Projects/reggie-build-py
-2026-01-06 16:34:16 [INFO] sync - Syncing member-project-dependencies
+2026-01-07 13:58:37 [INFO] sync - Syncing member-project-dependencies
                                                                                 
  Usage: reggie-build sync member-project-dependencies [OPTIONS]                 
                                                                                 
- Synchronize member project dependencies to use workspace file references.      
+ Sync member project dependencies to workspace file references.                 
                                                                                 
  Converts member project dependencies to file:// references using               
  ${PROJECT_ROOT} placeholders and updates tool.uv.sources accordingly.          
                                                                                 
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
-│ --project  -p      PROJECT  Optional list of project names or identifiers to │
-│                             sync                                             │
+│ --project  -p      TEXT  Optional list of workspace node/project names to    │
+│                          sync                                                │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 <!-- END:cmd reggie-build sync member-project-dependencies --help -->
@@ -257,20 +254,18 @@ uv run reggie-build sync version
 
 <!-- BEGIN:cmd reggie-build sync member-project-tool --help -->
 ```bash
-2026-01-06 16:34:16 [INFO] workspaces - Workspace metadata loaded: /Users/reggie.pierce/Projects/reggie-build-py
-2026-01-06 16:34:16 [INFO] sync - Syncing member-project-tool
+2026-01-07 13:58:37 [INFO] sync - Syncing member-project-tool
                                                                                 
  Usage: reggie-build sync member-project-tool [OPTIONS]                         
                                                                                 
- Synchronize tool.member-project configuration from the root project to member  
- projects.                                                                      
+ Sync tool.member-project config from root to member projects.                  
                                                                                 
  Copies the  section from the root pyproject.toml to all                        
- selected projects.                                                             
+ selected member projects.                                                      
                                                                                 
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
-│ --project  -p      PROJECT  Optional list of project names or identifiers to │
-│                             sync                                             │
+│ --project  -p      TEXT  Optional list of workspace node/project names to    │
+│                          sync                                                │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 <!-- END:cmd reggie-build sync member-project-tool --help -->
@@ -279,16 +274,13 @@ uv run reggie-build sync version
 
 <!-- BEGIN:cmd reggie-build sync ruff --help -->
 ```bash
-2026-01-06 16:34:16 [INFO] workspaces - Workspace metadata loaded: /Users/reggie.pierce/Projects/reggie-build-py
-2026-01-06 16:34:16 [INFO] sync - Syncing ruff
+2026-01-07 13:58:37 [INFO] sync - Syncing ruff
                                                                                 
  Usage: reggie-build sync ruff [OPTIONS]                                        
                                                                                 
  Run ruff formatter on git-tracked Python files.                                
                                                                                 
- Formats all Python files tracked by git using the ruff formatter.              
- If ruff is not installed, either warns or fails depending on the               
- require parameter.
+ Formats all Python files tracked by git using ruff.
 ```
 <!-- END:cmd reggie-build sync ruff --help -->
 
@@ -296,25 +288,22 @@ uv run reggie-build sync version
 
 <!-- BEGIN:cmd reggie-build sync version --help -->
 ```bash
-2026-01-06 16:34:16 [INFO] workspaces - Workspace metadata loaded: /Users/reggie.pierce/Projects/reggie-build-py
-2026-01-06 16:34:16 [INFO] sync - Syncing version
+2026-01-07 13:58:37 [INFO] sync - Syncing version
                                                                                 
  Usage: reggie-build sync version [OPTIONS] [VERSION]                           
                                                                                 
- Synchronize project versions across selected projects.                         
+ Sync project versions across selected projects.                                
                                                                                 
- Updates the version field in pyproject.toml for all selected projects.         
- If no version is specified, attempts to derive one from git commit hash        
- or uses the default version.                                                   
+ Updates the version field in pyproject.toml. If no version specified,          
+ derives from git commit hash or uses default.                                  
                                                                                 
 ╭─ Arguments ──────────────────────────────────────────────────────────────────╮
-│   version      [VERSION]  Version string to apply (e.g. 1.2.3 or             │
-│                           0.0.1+gabc123). If omitted, derived from git or    │
-│                           defaults to 0.0.1.                                 │
+│   version      [VERSION]  Version string (e.g. 1.2.3). Defaults to git or    │
+│                           0.0.1.                                             │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
-│ --project  -p      PROJECT  Optional list of project names or identifiers to │
-│                             sync                                             │
+│ --project  -p      TEXT  Optional list of workspace node/project names to    │
+│                          sync                                                │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 <!-- END:cmd reggie-build sync version --help -->
@@ -459,19 +448,19 @@ Usage: reggie-build sync [OPTIONS] COMMAND [ARGS]...
  workspace members.                                                             
                                                                                 
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
-│ --project  -p      PROJECT  Optional list of project names or identifiers to │
-│                             sync                                             │
+│ --project  -p      TEXT  Optional list of workspace node/project names to    │
+│                          sync                                                │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Commands ───────────────────────────────────────────────────────────────────╮
-│ build-system                  Synchronize build-system configuration from    │
-│                               the root project to member projects.           │
-│ member-project-dependencies   Synchronize member project dependencies to use │
-│                               workspace file references.                     │
-│ member-project-tool           Synchronize tool.member-project configuration  │
-│                               from the root project to member projects.      │
+│ build-system                  Sync build-system config from root to member   │
+│                               projects.                                      │
+│ member-project-dependencies   Sync member project dependencies to workspace  │
+│                               file references.                               │
+│ member-project-tool           Sync tool.member-project config from root to   │
+│                               member projects.                               │
 │ ruff                          Run ruff formatter on git-tracked Python       │
 │                               files.                                         │
-│ version                       Synchronize project versions across selected   │
+│ version                       Sync project versions across selected          │
 │                               projects.                                      │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
@@ -589,13 +578,13 @@ FastAPI code generation from OpenAPI specs with synchronization and watch mode s
 
 ### projects.py
 
-Project discovery, loading, and manipulation. Provides the `PyProject` class for working with `pyproject.toml` files as structured tomlkit documents.
+Simplified project management with intelligent source resolution.
 
-Key functions:
-- `root()`: Get the root workspace PyProject
+Key function:
+- `project(source, cwd, ctx)`: Factory function that resolves sources (None/name/path) to PyProject instances with context caching
 
 Key class:
-- `PyProject`: Extends tomlkit.TOMLDocument to wrap a pyproject.toml with methods for accessing metadata, checking workspace membership, iterating member projects, and persisting changes with automatic pruning
+- `PyProject`: Extends tomlkit.TOMLDocument with convenient persistence methods (reload, persist with automatic pruning and formatting)
 
 ### readme.py
 
@@ -609,7 +598,7 @@ Key features:
 
 ### sync.py
 
-Configuration synchronization across workspace projects. Coordinates build-system settings, dependencies, tool configurations, and version strings.
+Configuration synchronization across workspace projects using `projects.project()` and `workspaces.node()` for streamlined access.
 
 Key commands:
 - `build_system`: Sync [build-system] from root to members
@@ -618,27 +607,33 @@ Key commands:
 - `ruff`: Format code with ruff
 - `version`: Synchronize version strings
 
+Architecture:
+- Uses `projects.project()` for automatic caching and persistence
+- Context callbacks handle file writing on command completion
+- All workspace access via `workspaces.node()` and `workspaces.root_node()`
+
 ### utils.py
 
 General utilities including logging, git integration, file watching, and mapping manipulation.
 
 Key utilities:
-- `mapping_get/set/update/prune`: Nested dictionary path utilities for working with pyproject.toml
+- `mapping_get/set/merge/prune`: Nested dictionary path utilities for working with pyproject.toml
+- `exec()`: Command execution with stderr logging
+- `command_meta_cache()`: Context-based caching with cleanup callbacks
 - `logger()`: Configured logger with stdout/stderr separation
 - `watch_file()`: Monitor files for changes with hash-based detection
-- `git_version()`, `git_files()`: Git integration helpers
-- `dev_local()`: Get the dev-local directory for generated code
+- `git_version()`, `git_files()`, `git_repo_name()`: Git integration helpers
 
 ### workspaces.py
 
 Workspace discovery and metadata utilities using `uv workspace metadata` command.
 
-Key classes:
-- `WorkspaceMetadata`: Represents workspace root and member projects
-- `WorkspaceProject`: Represents a single project within a workspace
+Key class:
+- `WorkspaceNode`: Hierarchical representation of workspace structure with root and member nodes
 
 Key functions:
-- `metadata(cwd)`: Discover workspace metadata from uv
+- `root_node(cwd, ctx)`: Discover and build workspace node tree from uv metadata with optional caching
+- `node(source, cwd, ctx)`: Find a workspace node by name or path, with optional caching
 
 ## Development
 

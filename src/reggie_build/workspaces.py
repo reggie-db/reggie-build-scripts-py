@@ -4,139 +4,161 @@ Workspace discovery and metadata utilities.
 This module provides classes and functions for discovering Python workspaces
 using `uv workspace metadata` command. Features include:
 - Workspace metadata discovery from uv
-- Workspace project information (name, path, project flag)
+- Hierarchical workspace node structure (root and members)
 - Git repository name detection as fallback
 - Automatic root project detection
 
-The WorkspaceMetadata and WorkspaceProject classes provide structured access to
-workspace information without directly parsing pyproject.toml files.
+The WorkspaceNode class provides structured access to workspace information
+in a tree structure without directly parsing pyproject.toml files.
 """
 
-import functools
 import json
+import logging
 import pathlib
-import subprocess
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, field
+from itertools import chain
 from os import PathLike
-from urllib.parse import urlparse
+from typing import Iterable
 
-from reggie_build import utils
+import typer
+
+from reggie_build import projects, utils
 
 LOG = utils.logger(__file__)
 
 
 @dataclass
-class WorkspaceProject:
+class WorkspaceNode:
     """
-    Represents a single project within a workspace.
+    Represents a node in the workspace hierarchy (root or member project).
 
     Attributes:
         name: Project name
         path: Absolute path to the project directory
-        project: Whether this is a Python project (has pyproject.toml with [project])
+        root: Whether this is the root workspace node
+        members: List of child member nodes (only populated for root)
     """
 
     name: str
     path: pathlib.Path
-    project: bool = True
-
-    def __post_init__(self):
-        assert self.name
-        assert self.path.is_dir()
-
-    @classmethod
-    def from_dict(cls, member_data: dict) -> "WorkspaceProject":
-        """Create a WorkspaceProject from uv workspace metadata dict."""
-        return cls(name=member_data["name"], path=pathlib.Path(member_data["path"]))
-
-
-@dataclass
-class WorkspaceMetadata:
-    """
-    Represents workspace metadata from uv including root and member projects.
-
-    Attributes:
-        workspace_root: Absolute path to the workspace root directory
-        members: List of all workspace projects, including the root
-    """
-
-    workspace_root: pathlib.Path
-    members: list[WorkspaceProject]
-
-    def __post_init__(self):
-        """
-        Validate workspace root and ensure a root project exists.
-
-        If no root project is found, creates one using git repo name or directory name.
-        """
-        assert self.workspace_root.is_dir()
-        if self._root(validate=True) is None:
-            name = _git_repo_name()
-            if not name:
-                name = self.workspace_root.name
-            self.members.append(
-                WorkspaceProject(name=name, path=self.workspace_root, project=False)
-            )
+    root: bool = field(default=False)
+    members: list["WorkspaceNode"] = field(default_factory=list)
 
     @property
-    def root(self):
-        """Get the root workspace project."""
-        return self._root(validate=False)
+    def pyproject_path(self) -> pathlib.Path:
+        """Get the path to the pyproject.toml file for this node."""
+        return self.path / projects.PYPROJECT_FILE_NAME
 
-    def _root(self, validate: bool = False) -> WorkspaceProject | None:
-        """
-        Find the root project matching the workspace_root path.
+    def nodes(self) -> Iterable["WorkspaceNode"]:
+        """Iterate over all nodes (self and members)."""
+        return chain([self], self.members)
 
-        Args:
-            validate: If True, raises ValueError if multiple roots found
-
-        Returns:
-            The root WorkspaceProject or None if not found
-        """
-        root: WorkspaceProject | None = None
-        for member in self.members:
-            if self.workspace_root == member.path:
-                if root is None:
-                    root = member
-                    if not validate:
-                        break
-                else:
-                    raise ValueError(f"Multiple workspace roots found: {self}")
-        return root
-
-    @classmethod
-    def from_dict(cls, metadata_data: dict) -> "WorkspaceMetadata":
-        """Create WorkspaceMetadata from uv workspace metadata dict."""
-        workspace_root = pathlib.Path(metadata_data["workspace_root"])
-        members = []
-        members_data = metadata_data.get("members", [])
-        for member_data in members_data:
-            members.append(WorkspaceProject.from_dict(member_data))
-        return cls(workspace_root=workspace_root, members=members)
+    def __post_init__(self):
+        """Validate that only root nodes have members."""
+        if self.members:
+            if not self.root:
+                raise ValueError(f"Non root nodes must not have members: {self}")
+            for member in self.members:
+                if member.root:
+                    raise ValueError(f"Member nodes must not be root: {self}")
 
 
-def metadata(cwd: PathLike | str | None = None):
+def root_node(
+    cwd: PathLike | str | None = None, ctx: typer.Context | None = None
+) -> WorkspaceNode:
     """
-    Get workspace metadata for the current or specified directory.
+    Get the root workspace node, optionally with context caching.
+
+    When ctx is provided, caches the result in the context to avoid
+    reloading. Without ctx, directly calls _root_node().
+
+    Args:
+        cwd: Working directory to discover workspace from
+        ctx: Optional Typer context for caching
+
+    Returns:
+        WorkspaceNode representing the root with populated members list
+    """
+    if ctx is None:
+        return _root_node(cwd)
+    cache_key = f"workspace_root_node_{cwd or pathlib.Path().cwd()}"
+    return utils.command_meta_cache(ctx, cache_key, lambda: _root_node(cwd))
+
+
+def _root_node(cwd: PathLike | str | None = None) -> WorkspaceNode:
+    """
+    Get the root workspace node with all member nodes.
+
+    Executes `uv workspace metadata` to discover the workspace structure,
+    identifies the root project, and creates member nodes for all workspace
+    members. Falls back to git repo name if root is not explicitly listed.
 
     Args:
         cwd: Working directory to discover workspace from, or None for current directory
 
     Returns:
-        WorkspaceMetadata with root and member project information
+        WorkspaceNode representing the root with populated members list
     """
-    return _metadata(cwd=cwd) if cwd else _metadata_default()
+    metadata_data = _uv_metadata(cwd=cwd)
+    root_path = pathlib.Path(metadata_data["workspace_root"])
+    root_name: str | None = None
+    member_nodes: list[WorkspaceNode] = []
+    for member_data in metadata_data["members"]:
+        name = member_data["name"]
+        path = pathlib.Path(member_data["path"])
+        if root_path == path:
+            if root_name is None:
+                root_name = name
+            else:
+                raise ValueError("Multiple workspace roots found")
+        else:
+            member_nodes.append(WorkspaceNode(name=name, path=path))
+    if root_name is None:
+        root_name = utils.git_repo_name(cwd=cwd)
+        if not root_name:
+            root_name = root_path.name
+    return WorkspaceNode(
+        name=root_name, path=root_path, root=True, members=member_nodes
+    )
 
 
-@functools.cache
-def _metadata_default():
-    """Cached version of _metadata() for the current directory."""
-    metadata = _metadata()
-    LOG.info(f"Workspace metadata loaded: {metadata.workspace_root}")
-    return metadata
+def node(
+    source: PathLike | str | None = None,
+    cwd: PathLike | str | None = None,
+    ctx: typer.Context | None = None,
+) -> WorkspaceNode | None:
+    """
+    Find a workspace node by name or path.
+
+    Searches the workspace tree for a node matching the source identifier.
+    Supports name-based lookup and path-based lookup.
+
+    Args:
+        source: Node name or path to find, or None for root node
+        cwd: Working directory to discover workspace from
+        ctx: Optional Typer context for caching
+
+    Returns:
+        WorkspaceNode if found, None if not found
+        If source is None, returns the root node
+
+    Example:
+        node("my-project")  # Find by name
+        node("/path/to/project")  # Find by path
+        node()  # Returns root
+    """
+    rnode = root_node(cwd=cwd, ctx=ctx)
+    if not source:
+        return rnode
+    for n in rnode.nodes():
+        if n.name == source:
+            return n
+        if pathlib.Path(source) == n.path:
+            return n
+    return None
 
 
-def _metadata(cwd: PathLike | str | None = None) -> WorkspaceMetadata:
+def _uv_metadata(cwd: PathLike | str | None = None) -> dict:
     """
     Execute uv workspace metadata command and parse the result.
 
@@ -144,74 +166,28 @@ def _metadata(cwd: PathLike | str | None = None) -> WorkspaceMetadata:
         cwd: Working directory to run command in
 
     Returns:
-        WorkspaceMetadata parsed from uv output
+        Parsed metadata dictionary from uv
     """
     args = ["uv", "workspace", "metadata"]
-    proc = subprocess.Popen(
-        args,
-        cwd=cwd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-
-    assert proc.stdout is not None
-    assert proc.stderr is not None
-
-    # Read stderr asynchronously-like (interleaved is fine here)
-    for line in proc.stderr:
-        LOG.debug(line.rstrip())
-
-    # Now read stdout fully
-    stdout = proc.stdout.read()
-
-    ret = proc.wait()
-    if ret != 0:
-        raise subprocess.CalledProcessError(ret, args)
-
-    metadata_data = json.loads(stdout)
-    return WorkspaceMetadata.from_dict(metadata_data)
-
-
-@functools.cache
-def _git_repo_name() -> str | None:
-    """
-    Extract repository name from git remote origin URL.
-
-    Supports:
-    - git@github.com:owner/repo.git
-    - https://github.com/owner/repo.git
-
-    Returns repo name without `.git`, or None.
-    """
-    try:
-        origin_url = subprocess.check_output(
-            ["git", "config", "--get", "remote.origin.url"],
-            text=True,
-        ).strip()
-    except Exception:
-        return None
-
-    if not origin_url:
-        return None
-
-    # Normalize SSH form to URL so urlparse can handle it
-    if origin_url.startswith("git@"):
-        # git@github.com:owner/repo.git -> ssh://git@github.com/owner/repo.git
-        origin_url = "ssh://" + origin_url.replace(":", "/", 1)
-
-    try:
-        parsed = urlparse(origin_url)
-    except Exception:
-        return None
-    if not parsed.path:
-        return None
-
-    name = parsed.path.rstrip("/").rsplit("/", 1)[-1]
-    return name.removesuffix(".git")
+    stdout = utils.exec(args, cwd=cwd, stderr_log_level=logging.ERROR)
+    LOG.debug("UV metadata: %s", stdout)
+    return json.loads(stdout)
 
 
 if "__main__" == __name__:
-    metadata = metadata("/Users/reggie.pierce/Projects/reggie-bricks-py")
-    print(metadata)
-    print(metadata.root)
+    rnode = root_node("/Users/reggie.pierce/Projects/reggie-bricks-py")
+    print(
+        json.dumps(
+            asdict(rnode),
+            indent=2,
+            default=str,
+        )
+    )
+    for node in rnode.nodes():
+        print(
+            json.dumps(
+                asdict(node),
+                indent=2,
+                default=str,
+            )
+        )

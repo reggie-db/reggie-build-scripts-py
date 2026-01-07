@@ -149,10 +149,7 @@ def generate(
             _generate()
     finally:
         if temporary_hash:
-            try:
-                resolved_input.unlink()
-            except Exception:
-                pass
+            utils.run_catching(resolved_input.unlink)
 
 
 def _resolve_input_spec(value: str) -> tuple[Path, str | None]:

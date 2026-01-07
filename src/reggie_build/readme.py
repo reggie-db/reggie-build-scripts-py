@@ -19,7 +19,7 @@ from typing import Pattern
 
 import typer
 
-from reggie_build import projects
+from reggie_build import workspaces
 from reggie_build.utils import logger
 
 LOG = logger(__file__)
@@ -114,6 +114,7 @@ def _run_cmd(cmd: str) -> tuple[str, str]:
 
 @app.command(name="update-cmd")
 def update_cmd(
+    ctx: typer.Context,
     readme: Path = typer.Option(
         Path("README.md"),
         "--readme",
@@ -143,8 +144,9 @@ def update_cmd(
 
     Only blocks whose command matches --filter are executed and updated.
     """
+    root_node = workspaces.root_node(ctx=ctx)
     if not readme.exists():
-        readme = projects.root().file.parent / readme
+        readme = root_node.path / readme
         if not readme.exists():
             raise ValueError(f"README file not found at {readme}")
 

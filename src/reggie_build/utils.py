@@ -23,15 +23,116 @@ import shutil
 import subprocess
 import sys
 import time
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping, MutableMapping, TextIO, TypeVar
+from urllib.parse import urlparse
 
-import tomlkit
 import typer
 
-from reggie_build import projects
-
+T = TypeVar("T")
 # Default version string used when git version cannot be determined
 DEFAULT_VERSION = "0.0.1"
+
+
+def logger(name: str | None = None, validate_name: bool = True) -> logging.Logger:
+    """
+    Get a configured logger instance.
+
+    Args:
+        name: Name of the logger. If omitted, defaults to the root project name.
+              If "__main__", uses the current file name.
+        validate_name: whether to validate the logger name
+
+    Returns:
+        A logging.Logger instance
+    """
+    _configure_root_logger()
+    if not name:
+        name = pathlib.Path.cwd().name
+    elif validate_name:
+        if name == "__main__":
+            name = __file__
+        name_file = run_catching(pathlib.Path, name)
+        if name_file and name_file.is_file():
+            name = name_file.stem
+    return logging.getLogger(name)
+
+
+@functools.cache
+def _configure_root_logger():
+    """
+    Configure the root logger with stdout and stderr handlers.
+
+    Logs up to INFO level are directed to stdout, while WARNING and above
+    are directed to stderr. Log level can be controlled via the LOG_LEVEL
+    environment variable.
+
+    This function uses functools.cache to ensure configuration only happens once.
+    """
+
+    def _create_handler(
+        stream: TextIO,
+        level: int,
+        filter_fn: Callable[[logging.LogRecord], bool] | None = None,
+    ) -> logging.Handler:
+        """Create a stream handler with optional filter."""
+        handler = logging.StreamHandler(stream)  # type: ignore[arg-type]
+        handler.setLevel(level)
+        if filter_fn is not None:
+            handler.addFilter(filter_fn)
+        return handler
+
+    handlers = [
+        _create_handler(
+            sys.stdout, logging.DEBUG, lambda record: record.levelno <= logging.INFO
+        ),
+        _create_handler(
+            sys.stderr, logging.WARNING, lambda record: record.levelno > logging.INFO
+        ),
+    ]
+
+    log_level_env = os.getenv("LOG_LEVEL", "").upper()
+    log_level = logging.getLevelNamesMapping().get(log_level_env, logging.INFO)
+
+    logging.basicConfig(
+        level=log_level,
+        format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        handlers=handlers,
+    )
+
+
+def _log():
+    """Get the internal utils logger for debug output."""
+    return logger("utils", validate_name=False)
+
+
+def _run_catching_handler(e: Exception, message: str = None) -> T:
+    _log().debug(message or "Exception suppressed", e)
+    return None
+
+
+def run_catching(
+    fn: Callable[..., T],
+    *args: Any,
+    exception_handler: Callable[[Exception], T] | None = _run_catching_handler,
+    **kwargs: Any,
+) -> T:
+    """
+    Catch an exception and return a default value.
+
+    Args:
+        fn: Function to call
+        *args: Arguments to pass to the function
+        exception_handler: Handler to call if exception is raised, defaults debug logging and returning None to None
+        **kwargs: Keyword arguments to pass to the function
+    Returns:
+        The result of the function call, or None if an exception was caught
+    """
+    try:
+        return fn(*args, **kwargs)
+    except Exception as e:
+        if exception_handler is not None:
+            return exception_handler(e)
 
 
 def clean_text(text: str) -> str:
@@ -63,21 +164,22 @@ def mapping_get(data: Mapping | None, *path: str, default: Any = None) -> Any:
         dict_get({"a": {"b": {"c": 1}}}, "a", "b", "c") returns 1
         dict_get({"a": {"b": {}}}, "a", "b", "c", default=0) returns 0
     """
-    if not data:
-        return default
+    if data:
+        path_len = len(path)
+        current_data: Mapping = data
+        for path_idx in range(path_len):
+            key = path[path_idx]
+            next_value = current_data.get(key, None)
+            if path_idx == path_len - 1:
+                return next_value if next_value is not None else default
+            elif isinstance(next_value, Mapping):
+                current_data = next_value
+            else:
+                break
+    return default
 
-    current = data
-    for key in path:
-        if not isinstance(current, (dict, tomlkit.TOMLDocument)):
-            return default
-        current = current.get(key)
-        if current is None:
-            return default
 
-    return current
-
-
-def mapping_set(data: Mapping, *path: str, value: Any) -> bool:
+def mapping_set(data: MutableMapping, *path: str, value: Any) -> bool:
     """
     Set a value in a nested dictionary using a path of keys.
 
@@ -93,50 +195,59 @@ def mapping_set(data: Mapping, *path: str, value: Any) -> bool:
         dict_set(d, "a", "b", "c", value=1)
         # d is now {"a": {"b": {"c": 1}}}
     """
-    if not path:
-        return False
+    if path:
+        path_len = len(path)
+        current_data: MutableMapping = data
+        for path_idx in range(path_len):
+            key = path[path_idx]
+            next_value = current_data.get(key, None)
+            if path_idx == path_len - 1:
+                if next_value is value:
+                    return False
+                else:
+                    current_data[key] = value
+                    return True
+            else:
+                if not isinstance(next_value, MutableMapping):
+                    next_value = {}
+                    current_data[key] = next_value
+                current_data = next_value
+    return False
 
-    current = data
-    for key in path[:-1]:
-        if key not in current:
-            current[key] = {}
-        current = current[key]
 
-    current[path[-1]] = value
-
-    return True
-
-
-def mapping_update(left: Mapping, right: Mapping | None) -> Mapping:
+def mapping_merge(left: MutableMapping, right: Mapping | None) -> bool:
     """
-    Deep update `left` with values from `right`, mutating `left` in place.
+    Deep merge right mapping into left, mutating left in place.
 
-    Rules:
-    - If right is None, return left unchanged.
-    - Nested mappings are merged recursively.
-    - Non-mapping values from right overwrite left.
+    Recursively merges nested mappings. Non-mapping values from right
+    overwrite values in left.
 
     Args:
         left: Mapping to update in place
         right: Mapping whose values take precedence, or None
 
     Returns:
-        The updated mapping (same object as left, unless left was None)
+        True if any modifications were made, False otherwise
+
+    Example:
+        left = {"a": {"b": 1}, "c": 2}
+        right = {"a": {"d": 3}, "c": 4}
+        mapping_merge(left, right)
+        # left is now {"a": {"b": 1, "d": 3}, "c": 4}
     """
-    if right is None:
-        return left
-
-    for key, value in right.items():
-        if (
-            key in left
-            and isinstance(left[key], Mapping)
-            and isinstance(value, Mapping)
-        ):
-            mapping_update(left[key], value)
-        else:
+    mod = False
+    if right:
+        for key, value in right.items():
+            if key in left and isinstance(value, Mapping):
+                left_value = left[key]
+                if isinstance(left_value, Mapping):
+                    if not isinstance(left_value, MutableMapping):
+                        left_value = {**left_value}
+                        left[key] = left_value
+                    mapping_merge(left_value, value)
+                    continue
             left[key] = value
-
-    return left
+    return mod
 
 
 def mapping_prune(data: Mapping | None) -> bool:
@@ -157,156 +268,80 @@ def mapping_prune(data: Mapping | None) -> bool:
         mapping_prune(d)  # returns True, d is now {"b": {"c": 1}}
     """
 
+    def _is_collection(value: Any, mutable: bool = False) -> bool:
+        """Check if a value is a collection."""
+        return isinstance(
+            value, (list, set, tuple, MutableMapping if mutable else Mapping)
+        )
+
     def _is_empty(value: Any) -> bool:
         """Check if a value is an empty collection."""
-        return isinstance(value, (list, set, tuple, Mapping)) and len(value) == 0
+        return value is None or (_is_collection(value) and len(value) == 0)
 
-    if _is_empty(data):
-        return False
-
-    def _prune(value):
+    def _prune(value: Any) -> bool:
         """Recursively prune a value and return (pruned_value, was_modified)."""
-        if isinstance(value, Mapping):
-            modified = False
-            pruned = {}
-            for k, v in value.items():
-                pruned_v, v_modified = _prune(v)
-                if v_modified:
-                    modified = True
-                # Only include if not an empty collection
-                if not _is_empty(pruned_v):
-                    pruned[k] = pruned_v
-                else:
-                    modified = True
-            return pruned, modified or len(pruned) != len(value)
-        elif isinstance(value, list):
-            modified = False
-            pruned = []
-            for item in value:
-                pruned_item, item_modified = _prune(item)
-                if item_modified:
-                    modified = True
-                # Only include if not an empty collection
-                if not _is_empty(pruned_item):
-                    pruned.append(pruned_item)
-                else:
-                    modified = True
-            return pruned, modified or len(pruned) != len(value)
+        if not _is_collection(value, True):
+            return False
+        mod = False
+        if isinstance(value, MutableMapping):
+            for k in list(value.keys()):
+                v = value[k]
+                if _is_empty(v):
+                    del value[k]
+                    mod = True
+                elif _prune(v):
+                    mod = True
         else:
-            return value, False
+            for i in reversed(range(len(value))):
+                v = value[i]
+                if _is_empty(v):
+                    del value[i]
+                    mod = True
+                elif _prune(v):
+                    mod = True
+        return mod
 
-    modified = False
-    keys_to_remove = []
-
-    for key, value in list(data.items()):
-        pruned_value, value_modified = _prune(value)
-        if value_modified:
-            modified = True
-        # Remove if empty collection
-        if _is_empty(pruned_value):
-            keys_to_remove.append(key)
-            modified = True
-        elif value_modified or pruned_value != value:
-            data[key] = pruned_value
-            modified = True
-
-    for key in keys_to_remove:
-        del data[key]
-
-    return modified
+    return _prune(data)
 
 
-def logger(name: str | None = None):
+def command_is_help(ctx: typer.Context) -> bool:
+    """Check if the command was invoked with --help flag."""
+    help_option_names = ctx.help_option_names
+    if help_option_names and any(arg in help_option_names for arg in sys.argv):
+        return True
+    return False
+
+
+def command_meta_cache(
+    ctx: typer.Context,
+    key: str,
+    value_factory: Callable[[], T],
+    on_close: Callable[[T], None] = None,
+) -> T:
     """
-    Get a configured logger instance.
+    Cache a value in the context metadata with optional cleanup on close.
+
+    Useful for expensive operations that should only run once per command
+    invocation, with automatic cleanup when the command completes.
 
     Args:
-        name: Name of the logger. If omitted, defaults to the root project name.
-              If "__main__", uses the current file name.
+        ctx: Typer context
+        key: Cache key for storing the value
+        value_factory: Function to create the value if not cached
+        on_close: Optional callback to run when context closes
 
     Returns:
-        A logging.Logger instance
+        Cached or newly created value
     """
-    _configure_root_logger()
-    if not name:
-        name = projects.root().name
+    if key not in ctx.meta:
+        value = value_factory()
+        _log().debug("Meta cache update: key:%s value:%s", key, value)
+        ctx.meta[key] = value
+        if on_close is not None:
+            ctx.call_on_close(lambda: on_close(value))
+        return value
     else:
-        if name == "__main__":
-            name = __file__
-        try:
-            name_file = pathlib.Path(name)
-            if name_file.is_file():
-                name = name_file.stem
-        except Exception:
-            pass
-    return logging.getLogger(name)
-
-
-@functools.cache
-def _configure_root_logger():
-    """
-    Configure the root logger with stdout and stderr handlers.
-
-    Logs up to INFO level are directed to stdout, while WARNING and above
-    are directed to stderr. Log level can be controlled via the LOG_LEVEL
-    environment variable.
-
-    This function uses functools.cache to ensure configuration only happens once.
-    """
-    log_level_env = os.getenv("LOG_LEVEL", "").upper()
-    log_level = logging.getLevelNamesMapping().get(log_level_env, logging.INFO)
-
-    class StdoutFilter(logging.Filter):
-        """Filter that passes only INFO and below to stdout."""
-
-        def filter(self, record: logging.LogRecord) -> bool:
-            return record.levelno <= logging.INFO
-
-    class StderrFilter(logging.Filter):
-        """Filter that passes only WARNING and above to stderr."""
-
-        def filter(self, record: logging.LogRecord) -> bool:
-            return record.levelno > logging.INFO
-
-    stdout_handler = logging.StreamHandler(sys.stdout)
-    stdout_handler.setLevel(logging.DEBUG)
-    stdout_handler.addFilter(StdoutFilter())
-
-    stderr_handler = logging.StreamHandler(sys.stderr)
-    stderr_handler.setLevel(logging.WARNING)
-    stderr_handler.addFilter(StderrFilter())
-
-    logging.basicConfig(
-        level=log_level,
-        format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-        handlers=[stdout_handler, stderr_handler],
-    )
-    handlers = {"stdout": stdout_handler, "stderr": stderr_handler}
-    basic_config_handlers = []
-    for name, handler in handlers.items():
-        if handler in logging.root.handlers:
-            basic_config_handlers.append(name)
-    logging.root.debug(f"Basic config handlers: {basic_config_handlers}")
-
-
-def dev_local() -> pathlib.Path:
-    """
-    Return the path to the dev-local directory in the workspace root.
-
-    This directory is used for temporary development files and generated code,
-    such as OpenAPI-generated projects.
-
-    Returns:
-        Path to the dev-local directory
-    """
-    root_dir = projects.root().file.parent
-    return root_dir / "dev-local"
-
-
-def is_help(ctx: typer.Context) -> bool:
-    help_option_names = ctx.help_option_names
-    return help_option_names and any(arg in help_option_names for arg in sys.argv)
+        return ctx.meta[key]
 
 
 def watch_file(src: pathlib.Path, interval: float = 2.0):
@@ -350,6 +385,7 @@ def watch_file(src: pathlib.Path, interval: float = 2.0):
             current = _hash(src)
             if current != last_hash:
                 last_hash = current
+                _log().debug("File updated: %s", src)
                 yield current
             time.sleep(interval)
         except FileNotFoundError:
@@ -358,30 +394,56 @@ def watch_file(src: pathlib.Path, interval: float = 2.0):
             return
 
 
-@functools.cache
-def git_files() -> list[pathlib.Path] | None:
+def git_repo_name(cwd: pathlib.Path | str | None = None) -> str | None:
     """
-    Get a list of all files tracked by git in the current repository.
+    Extract repository name from git remote origin URL.
 
-    Returns:
-        A list of Path objects for git-tracked files, or None if git fails.
+    Supports:
+    - git@github.com:owner/repo.git
+    - https://github.com/owner/repo.git
+
+    Returns repo name without `.git`, or None.
     """
     git_exec = which("git")
-    if git_exec:
-        try:
-            result = subprocess.run(
-                [str(git_exec), "ls-files"],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            return [pathlib.Path(f) for f in result.stdout.splitlines() if f]
-        except Exception:
-            pass
-    return None
+    if not git_exec:
+        return None
+    origin_url = run_catching(exec, [git_exec, "remote", "get-url", "origin"], cwd=cwd)
+    if not origin_url:
+        return None
+
+    # Normalize SSH form to URL so urlparse can handle it
+    if origin_url.startswith("git@"):
+        # git@github.com:owner/repo.git -> ssh://git@github.com/owner/repo.git
+        origin_url = "ssh://" + origin_url.replace(":", "/", 1)
+
+    parsed = run_catching(urlparse, origin_url)
+    if not parsed or not parsed.path:
+        return None
+
+    name = parsed.path.rstrip("/").rsplit("/", 1)[-1]
+    return name.removesuffix(".git") or None
 
 
-def git_version() -> str | None:
+def git_files(cwd: pathlib.Path | str | None = None) -> list[pathlib.Path] | None:
+    """
+    Build a workspace version string from git commit hash.
+
+    Constructs a version string in the format <default_version>+g<short_rev> using
+    the current git commit hash. Returns None if git is unavailable or the command
+    fails.
+
+    Returns:
+        Version string like "0.0.1+g767bd46" or None if git is unavailable
+    """
+    git_exec = which("git")
+    if not git_exec:
+        return None
+    out = run_catching(exec, [git_exec, "ls-files"], cwd=cwd)
+    lines = (line.strip() for line in out.splitlines())
+    return [pathlib.Path(line) for line in lines if line]
+
+
+def git_version(cwd: pathlib.Path | str | None = None) -> str | None:
     """
     Build a workspace version string from git commit hash.
 
@@ -395,28 +457,59 @@ def git_version() -> str | None:
     git_exec = which("git")
     if git_exec:
         modified = False
-        try:
-            status = subprocess.check_output(
-                [str(git_exec), "status", "--porcelain"],
-                cwd=pathlib.Path(__file__).resolve().parents[1],
-                text=True,
-            )
-            if status.strip():
-                modified = True
-        except Exception:
-            pass
-        try:
-            head_arg = "HEAD" if modified else "HEAD~1"
-            rev = subprocess.check_output(
-                [str(git_exec), "rev-parse", "--short", head_arg],
-                cwd=pathlib.Path(__file__).resolve().parents[1],
-                text=True,
-            ).strip()
-            if rev:
-                return f"{DEFAULT_VERSION}+g{rev}"
-        except Exception:
-            pass
+        status = run_catching(exec, [git_exec, "status", "--porcelain"], cwd=cwd)
+        if status:
+            modified = True
+        head_arg = "HEAD" if modified else "HEAD~1"
+        rev = run_catching(exec, [git_exec, "rev-parse", "--short", head_arg], cwd=cwd)
+        if rev:
+            return f"{DEFAULT_VERSION}+g{rev}"
     return None
+
+
+def exec(
+    args: list[Any] | str,
+    cwd: os.PathLike | str | None = None,
+    stderr_log_level: int | None = logging.DEBUG,
+    strip: bool = True,
+) -> str:
+    """
+    Execute a command and return stdout, logging stderr.
+
+    Args:
+        args: Command and arguments as list or single string
+        cwd: Working directory to run command in
+        stderr_log_level: Log level for stderr output, or None to suppress
+
+    Returns:
+        Command stdout as a string (trailing whitespace stripped)
+
+    Raises:
+        CalledProcessError: If command exits with non-zero status
+    """
+    if isinstance(args, str):
+        process_args = [args]
+    else:
+        process_args = [str(arg) for arg in args]
+    _log().debug("Executing command: %s", process_args)
+    proc = subprocess.Popen(
+        process_args,
+        cwd=cwd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE if stderr_log_level is not None else None,
+        text=True,
+    )
+
+    if stderr_log_level is not None:
+        for line in proc.stderr:
+            _log().log(stderr_log_level, line.rstrip())
+    stdout = proc.stdout.read()
+    if strip:
+        stdout = stdout.strip()
+    ret = proc.wait()
+    if ret != 0:
+        raise subprocess.CalledProcessError(ret, args)
+    return stdout.rstrip()
 
 
 @functools.lru_cache(maxsize=None)
@@ -439,10 +532,3 @@ def which(name: str) -> pathlib.Path | None:
             return file
     logger(__file__).warning(f"Executable not found: {name}")
     return None
-
-
-if __name__ == "__main__":
-    logger(__name__).info("test")
-    print(git_version())
-    print(git_files())
-    print(which("tunaf"))

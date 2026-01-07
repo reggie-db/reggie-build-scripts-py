@@ -14,7 +14,7 @@ import shutil
 
 import typer
 
-from reggie_build import projects
+from reggie_build import workspaces
 from reggie_build.utils import logger
 
 LOG = logger(__file__)
@@ -23,7 +23,7 @@ app = typer.Typer(help="Clean workspace resources.")
 
 
 @app.command()
-def build_artifacts():
+def build_artifacts(ctx: typer.Context):
     """
     Remove Python build artifacts from the workspace.
 
@@ -34,7 +34,8 @@ def build_artifacts():
 
     It protects the root .venv and scripts directory from deletion.
     """
-    root_dir = projects.root().file.parent
+    root_node = workspaces.root_node(ctx=ctx)
+    root_dir = root_node.path
     root_venv = root_dir / ".venv"
 
     excludes = [

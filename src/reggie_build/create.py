@@ -14,8 +14,7 @@ from typing import Annotated
 import tomlkit
 import typer
 
-from reggie_build import projects, sync
-from reggie_build.projects import PyProject
+from reggie_build import projects, sync, workspaces
 from reggie_build.utils import logger
 
 LOG = logger(__file__)
@@ -25,6 +24,7 @@ app = typer.Typer(help="Create workspace resources.")
 
 @app.command()
 def member(
+    ctx: typer.Context,
     name: Annotated[
         str,
         typer.Argument(
@@ -68,7 +68,8 @@ def member(
     The project name is used for both the directory and package name (with hyphens
     converted to underscores for the package).
     """
-    root_dir = projects.root().file.parent
+    root_node = workspaces.root_node(ctx=ctx)
+    root_dir = root_node.path
     if path:
         path = path.resolve()
         # Ensure the specified path is within the workspace root
@@ -89,7 +90,6 @@ def member(
 
     # Initialize pyproject.toml
     pyproject = {
-        "build-system": {},
         "project": {
             "name": name,
             "version": "0",
@@ -99,18 +99,16 @@ def member(
 
     if project_dependencies:
         # Add project dependencies as a multiline TOML array
-        member_projects = projects.root().members()
+
         deps = tomlkit.array()
         deps.multiline(True)
         for dep in project_dependencies:
-            dep_project: PyProject | None = None
-            for member_project in member_projects:
-                if member_project.name == dep:
-                    dep_project = member_project
-                    break
-            if not dep_project:
+            member_node = next(
+                (node for node in root_node.members if node.name == dep), None
+            )
+            if member_node is None:
                 raise ValueError(f"Invalid project dependency: {dep}")
-            deps.append(dep_project.name)
+            deps.append(member_node.name)
         pyproject["project"]["dependencies"] = deps
 
     pyproject_path.write_text(tomlkit.dumps(pyproject))
@@ -119,5 +117,12 @@ def member(
     package_dir = project_dir / "src" / name.replace("-", "_")
     package_dir.mkdir(parents=True, exist_ok=True)
     (package_dir / "__init__.py").touch()
-    sync.all([PyProject(pyproject_path)])
+    sync.all(ctx, [str(pyproject_path)])
     LOG.info(f"Member project created: {name}")
+
+
+if __name__ == "__main__":
+    from typer.testing import CliRunner
+
+    runner = CliRunner()
+    runner.invoke(app, ["cool-dude"], catch_exceptions=False)

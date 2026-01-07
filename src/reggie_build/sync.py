@@ -9,76 +9,68 @@ across multiple projects in a workspace. Features include:
 - Running ruff formatter on Python files
 - Managing version strings across projects
 
-Commands can be run individually or all at once via the main sync callback.
+Commands use the projects.project() and workspaces.node() functions for
+streamlined access with context caching. All sync operations automatically
+persist changes via context callbacks.
 """
 
 import inspect
+import logging
+import pathlib
 import re
-import subprocess
 from copy import deepcopy
-from typing import Annotated, Callable, Iterable, Mapping
+from typing import Annotated, Any, Callable, Mapping
 
-import click
 import typer
 from typer.models import CommandInfo
 
 from reggie_build import projects, utils, workspaces
 from reggie_build.projects import PyProject
-from reggie_build.utils import logger
 
-LOG = logger(__file__)
-
-
-class ProjectParamType(click.ParamType):
-    name = "Project"
-
-    def convert(self, value, param, ctx):
-        workspace_metadata = workspaces.metadata()
-        if value == workspace_metadata.root.name:
-            return PyProject(source=workspace_metadata)
-        for member in workspace_metadata.members:
-            if member.name == value:
-                return PyProject(source=member)
-        return PyProject(source=workspaces.metadata(value))
+LOG = utils.logger(__file__)
 
 
 def _projects_meta(ctx: typer.Context) -> list[PyProject]:
+    """Get the list of projects from context metadata."""
     return ctx.meta.setdefault("pyprojects", [])
 
 
-def _projects_persist(pyprojects: Iterable[PyProject]):
-    for pyproject in pyprojects:
-        if pyproject.persist():
-            LOG.info(f"Persisted {pyproject.file}")
+def _projects_option_callback(ctx: typer.Context, node_names: list[str]) -> list[str]:
+    """
+    Validate and expand project names option.
 
+    Validates that all specified node names exist, and expands empty
+    list to all workspace nodes.
 
-def _projects_callback(ctx: typer.Context, pyprojects: list[PyProject]):
-    if not pyprojects:
-        pyprojects = list(projects.root().projects())
-    if not pyprojects:
-        raise typer.BadParameter("No projects found")
-    _projects_meta(ctx).extend(pyprojects)
-    return pyprojects
+    Args:
+        ctx: Typer context
+        node_names: List of node names from --project option
+
+    Returns:
+        List of validated node names (expanded if empty)
+    """
+    if node_names:
+        for node_name in node_names:
+            if not workspaces.node(node_name, ctx=ctx):
+                raise typer.BadParameter(f"Workspace node not found: {node_name}")
+    else:
+        root_node = workspaces.root_node(ctx=ctx)
+        node_names = [node.name for node in root_node.nodes()]
+    return node_names
 
 
 _PROJECTS_OPTION = Annotated[
-    list[PyProject],
+    list[str],
     typer.Option(
         "-p",
         "--project",
-        click_type=ProjectParamType(),
-        callback=_projects_callback,
-        help="Optional list of project names or identifiers to sync",
+        callback=_projects_option_callback,
+        help="Optional list of workspace node/project names to sync",
     ),
 ]
 
 
-@click.pass_context
-def _result_callback(ctx: typer.Context, *_, **__):
-    _projects_persist(_projects_meta(ctx))
-
-
-app = typer.Typer(result_callback=_result_callback)
+app = typer.Typer()
 
 
 @app.callback(invoke_without_command=True)
@@ -101,32 +93,29 @@ def _callback(
         _projects_meta(ctx).clear()
     else:
         # persist handled by callbacks
-        all(sync_projects, persist=False)
+        all(ctx, sync_projects)
 
 
-def all(projs: list[PyProject], persist: bool = True):
+def all(ctx: typer.Context, projs: list[str]):
     """
     Execute all registered sync commands for the specified projects.
 
-    Iterates through all commands registered with the app and invokes them,
-    passing the project list if the command accepts parameters.
+    Iterates through all commands registered with the app and invokes them.
+    Commands must accept ctx and projs parameters.
 
     Args:
-        projs: List of project identifiers to sync
-        persist: persist all projects
+        ctx: Typer context for caching and coordination
+        projs: List of project/node names to sync
     """
-    if not isinstance(projs, list):
-        projs = list(projs)
     for cmd in app.registered_commands:
         _log_command(cmd)
         callback = cmd.callback
         sig = inspect.signature(callback)
-        callback(projs) if len(sig.parameters) >= 1 else callback()
-    if persist:
-        _projects_persist(projs)
+        callback(ctx, projs) if len(sig.parameters) >= 2 else callback(ctx)
 
 
 def _log_command(cmd: CommandInfo | str):
+    """Log which sync command is being executed."""
     if isinstance(cmd, CommandInfo):
         cmd_name = cmd.name
         if not cmd_name:
@@ -140,51 +129,45 @@ def _log_command(cmd: CommandInfo | str):
 
 @app.command()
 def build_system(
+    ctx: typer.Context,
     sync_projects: _PROJECTS_OPTION = None,
 ):
     """
-    Synchronize build-system configuration from the root project to member projects.
+    Sync build-system config from root to member projects.
 
     Copies the [build-system] section from the root pyproject.toml to all selected
     projects, ensuring consistent build tooling across the workspace.
     """
     key = "build-system"
-    data = projects.root().get(key, None)
-    if not data:
+    root_pyproject = projects.project(ctx=ctx)
+    root_data = root_pyproject.get(key, None)
+    if not root_data:
         LOG.warning("No build-system section found")
         return
 
     def _set(p: PyProject):
         """Update the build-system section for a project."""
-        p[key] = deepcopy(data)
+        p[key] = deepcopy(root_data)
 
-    _update_projects(_set, sync_projects)
+    _update_projects(ctx, sync_projects, _set, exclude_root=True)
 
 
 @app.command()
 def member_project_dependencies(
+    ctx: typer.Context,
     sync_projects: _PROJECTS_OPTION = None,
 ):
     """
-    Synchronize member project dependencies to use workspace file references.
+    Sync member project dependencies to workspace file references.
 
     Converts member project dependencies to file:// references using
     ${PROJECT_ROOT} placeholders and updates tool.uv.sources accordingly.
     """
-    member_project_names = [p.name for p in projects.root().members()]
+    root_node = workspaces.root_node(ctx=ctx)
+    member_project_names = [node.name for node in root_node.members]
 
     def parse_dep_name(dep: str) -> str | None:
-        """
-        Parse a dependency string to extract the project name.
-
-        Handles both simple dependency names and file:// references.
-
-        Args:
-            dep: Dependency string from pyproject.toml
-
-        Returns:
-            Extracted project name or the original string if not a file reference
-        """
+        """Extract project name from dependency string (handles file:// format)."""
         m = re.match(r"^\s*([\w\-\.\[\]]+)\s*@\s*file://", dep)
         return m.group(1) if m else dep
 
@@ -215,45 +198,45 @@ def member_project_dependencies(
                     pyproject, "tool", "uv", "sources", dep, "workspace", value=True
                 )
 
-    _update_projects(_set, sync_projects)
+    _update_projects(ctx, sync_projects, _set, exclude_root=True)
 
 
 @app.command()
 def member_project_tool(
+    ctx: typer.Context,
     sync_projects: _PROJECTS_OPTION = None,
 ):
     """
-    Synchronize tool.member-project configuration from the root project to member projects.
+    Sync tool.member-project config from root to member projects.
 
     Copies the [tool.member-project] section from the root pyproject.toml to all
-    selected projects.
+    selected member projects.
     """
-    data = utils.mapping_get(projects.root(), "tool", "member-project")
+    root_data = projects.project(ctx=ctx)
+    data = utils.mapping_get(root_data, "tool", "member-project")
 
     def _set(p: PyProject):
-        """Update the tool.member-project section for a project."""
-        if not p.is_root and data:
-            utils.mapping_update(p, data)
+        """Merge tool.member-project section into project."""
+        utils.mapping_merge(p, data)
 
-    _update_projects(_set, sync_projects)
+    _update_projects(ctx, sync_projects, _set, exclude_root=True)
 
 
 @app.command()
 def ruff(
+    _: typer.Context,
     require: Annotated[
         bool,
         typer.Option(
             hidden=True,
-            help="Fail if ruff is not installed.",
+            help="Fail if ruff not installed.",
         ),
     ] = True,
 ):
     """
     Run ruff formatter on git-tracked Python files.
 
-    Formats all Python files tracked by git using the ruff formatter.
-    If ruff is not installed, either warns or fails depending on the
-    require parameter.
+    Formats all Python files tracked by git using ruff.
     """
     ruff = utils.which("ruff")
     if not ruff:
@@ -262,12 +245,22 @@ def ruff(
             raise ValueError(message)
         LOG.warning(message)
         return
-
     git_files = utils.git_files()
     if not git_files:
+        LOG.warning("git file lookup failed")
         return
 
-    py_files = [str(f) for f in git_files if f.name.endswith(".py")]
+    def _exec(arg: Any, options: list[Any], py_files: list[pathlib.Path]):
+        out = utils.exec([ruff, arg, *options, *py_files])
+        message = ("ruff: %s", out)
+
+        if LOG.isEnabledFor(logging.DEBUG):
+            LOG.debug(*message)
+        elif any(
+            re.search(p, out, re.IGNORECASE) for p in (r"\breformatted\b", r"\bfixed\b")
+        ):
+            LOG.info(*message)
+
     run_arg_options = {
         "check": [
             "--select",
@@ -276,33 +269,33 @@ def ruff(
         ],
         "format": [],
     }
+    py_files_buffer: list[pathlib.Path] = []
+    total = len(git_files)
     for arg, options in run_arg_options.items():
-        process_args = [str(ruff), arg, *py_files, *options]
-        out = subprocess.check_output(
-            process_args,
-            text=True,
-        ).strip()
-        if out:
-            LOG.info(f"ruff: {out}")
+        for idx, f in enumerate(git_files, 1):
+            if f.name.endswith(".py"):
+                py_files_buffer.append(f)
+            if py_files_buffer and (idx % 100 == 0 or idx == total):
+                _exec(arg, options, py_files_buffer)
+                py_files_buffer.clear()
 
 
 @app.command()
 def version(
+    ctx: typer.Context,
     sync_projects: _PROJECTS_OPTION = None,
     version: Annotated[
         str,
         typer.Argument(
-            help="Version string to apply (e.g. 1.2.3 or 0.0.1+gabc123). "
-            f"If omitted, derived from git or defaults to {utils.DEFAULT_VERSION}.",
+            help=f"Version string (e.g. 1.2.3). Defaults to git or {utils.DEFAULT_VERSION}.",
         ),
     ] = None,
 ):
     """
-    Synchronize project versions across selected projects.
+    Sync project versions across selected projects.
 
-    Updates the version field in pyproject.toml for all selected projects.
-    If no version is specified, attempts to derive one from git commit hash
-    or uses the default version.
+    Updates the version field in pyproject.toml. If no version specified,
+    derives from git commit hash or uses default.
     """
     if not version:
         version = utils.git_version() or utils.DEFAULT_VERSION
@@ -312,28 +305,39 @@ def version(
         pyproject_version = utils.mapping_get(pyproject, "project", "version")
         if version != pyproject_version:
             utils.mapping_set(pyproject, "project", "version", value=version)
+            pyproject_name = pyproject.get("project", {}).get("name", None)
             LOG.info(
-                f"Updated {pyproject.name} version: {pyproject_version} -> {version}"
+                f"Updated {pyproject_name} version: {pyproject_version} -> {version}"
             )
 
-    _update_projects(_set, sync_projects)
+    _update_projects(ctx, sync_projects, _set)
 
 
 def _update_projects(
+    ctx: typer.Context,
+    node_names: list[str] | None,
     pyproject_fn: Callable[[PyProject], None],
-    projs: list[PyProject] | None,
+    exclude_root: bool = False,
 ):
     """
     Apply a pyproject update function to multiple projects.
 
-    Helper function that iterates through projects and applies a given
-    modification function to each one, optionally excluding the scripts project.
+    Loads each project using projects.project() with context caching,
+    then applies the modification function. Persistence happens
+    automatically via context callbacks.
 
     Args:
-        pyproject_fn: Function that takes a Project and modifies its pyproject
-        projs: PyProject identifiers to update
+        ctx: Typer context for caching
+        node_names: List of node names to update
+        pyproject_fn: Function that modifies a PyProject
+        exclude_root: Whether to skip the root node
     """
-    for proj in projs:
+    for node_name in node_names:
+        if exclude_root:
+            node = workspaces.node(node_name, ctx=ctx)
+            if node and node.root:
+                continue
+        proj = projects.project(node_name, ctx=ctx)
         pyproject_fn(proj)
 
 
@@ -341,4 +345,4 @@ if __name__ == "__main__":
     from typer.testing import CliRunner
 
     runner = CliRunner()
-    runner.invoke(app, ["-p", "reggie-build"], catch_exceptions=False)
+    runner.invoke(app, [], catch_exceptions=False)
