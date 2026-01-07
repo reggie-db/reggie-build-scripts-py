@@ -306,7 +306,7 @@ def version(
         if version != pyproject_version:
             utils.mapping_set(pyproject, "project", "version", value=version)
             pyproject_name = pyproject.get("project", {}).get(
-                "name", pyproject.path.name
+                "name", pyproject.path.parent.name
             )
             LOG.info(
                 f"Updated {pyproject_name} version: {pyproject_version} -> {version}"

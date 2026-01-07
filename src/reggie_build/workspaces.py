@@ -13,7 +13,6 @@ in a tree structure without directly parsing pyproject.toml files.
 """
 
 import json
-import logging
 import pathlib
 from dataclasses import asdict, dataclass, field
 from itertools import chain
@@ -169,7 +168,7 @@ def _uv_metadata(cwd: PathLike | str | None = None) -> dict:
         Parsed metadata dictionary from uv
     """
     args = ["uv", "workspace", "metadata"]
-    stdout = utils.exec(args, cwd=cwd, stderr_log_level=logging.ERROR)
+    stdout = utils.exec(args, cwd=cwd)
     LOG.debug("UV metadata: %s", stdout)
     return json.loads(stdout)
 
