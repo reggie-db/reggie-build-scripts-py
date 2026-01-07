@@ -2,30 +2,36 @@
 
 A comprehensive workspace management tool designed to handle complicated and common code generation tasks across multi-project Python environments. Built to be adopted by any project requiring automated code generation, workspace synchronization, and build orchestration.
 
-## Table of Contents
+## Why Use reggie-build?
 
-- [Features](#features)
-- [Installation](#installation)
-- [Commands](#commands)
-  - [Clean](#clean)
-  - [Create](#create)
-  - [Sync](#sync)
-  - [OpenAPI](#openapi)
-  - [README](#readme)
-- [Adopting reggie-build in Your Project](#adopting-reggie-build-in-your-project)
-- [Module Reference](#module-reference)
-- [Development](#development)
-- [License](#license)
+Managing multi-project Python workspaces becomes increasingly complex as projects grow. Common challenges include:
 
-## Features
+- **Code Generation Complexity**: OpenAPI specs, protobuf definitions, and other schema-driven code need consistent regeneration workflows
+- **Configuration Drift**: Build configs, dependencies, and tool settings diverge across related projects
+- **Workspace Coordination**: Multiple projects with interdependencies require careful version and dependency management
+- **Build Artifact Management**: Generated files, caches, and artifacts accumulate without systematic cleanup
 
-`reggie-build` provides a battle-tested CLI that orchestrates:
+`reggie-build` solves these problems by providing a battle-tested CLI that orchestrates:
 
-- **Automated Code Generation**: Generate FastAPI code from OpenAPI specs with hash based change detection and watch mode.
-- **Smart Synchronization**: Keep build configs, dependencies, and tool settings consistent across all workspace projects.
-- **Project Scaffolding**: Bootstrap new projects with standard layouts and automatic workspace integration.
-- **Artifact Management**: Clean build artifacts safely with protection for critical directories.
-- **Version Coordination**: Manage version strings across multiple projects with git integration.
+- **Automated Code Generation**: Generate FastAPI code from OpenAPI specs with hash based change detection and watch mode
+- **Smart Synchronization**: Keep build configs, dependencies, and tool settings consistent across all workspace projects
+- **Project Scaffolding**: Bootstrap new projects with standard layouts and automatic workspace integration
+- **Artifact Management**: Clean build artifacts safely with protection for critical directories
+- **Version Coordination**: Manage version strings across multiple projects with git integration
+
+## Use Cases
+
+### OpenAPI-Driven Development
+Generate type-safe FastAPI code from OpenAPI specifications with custom templates. The tool handles downloading specs from URLs, detecting changes, and only updating when necessary. Perfect for microservice architectures where API contracts drive implementation.
+
+### Multi-Project Workspaces
+Manage Python monorepos or multi-project repositories where several related packages share common build configurations, dependencies, and tooling. Synchronize settings from a root project to all members automatically.
+
+### Continuous Integration
+Integrate code generation into CI/CD pipelines with deterministic outputs and change detection. Only regenerate when specs change, reducing unnecessary diff noise.
+
+### Schema-Driven Workflows
+While currently supporting OpenAPI, the architecture can be extended to handle other code generation tasks like protobuf compilation, GraphQL schema generation, or database model generation.
 
 ## Installation
 
@@ -73,9 +79,6 @@ pip install -e .
 
 ### Clean
 
-- **Problem addressed**: Accumulation of Python bytecode, virtual environments, and egg info files across multiple projects can lead to stale code execution and wasted disk space.
-- **Why it's useful**: Provides a single command to safely purge common build artifacts from the entire workspace while protecting the root development environment.
-
 <!-- BEGIN:cmd reggie-build clean build-artifacts --help -->
 ```bash
 Usage: reggie-build clean build-artifacts [OPTIONS]                            
@@ -104,9 +107,6 @@ This command removes:
 The root `.venv` directory is protected from deletion.
 
 ### Create
-
-- **Problem addressed**: Manually creating new project directories, `pyproject.toml` files, and `src` layouts is tedious and error prone, often leading to inconsistent project structures.
-- **Why it's useful**: Standardizes project creation, ensuring every new member project follows the same conventions and is immediately integrated into the workspace.
 
 <!-- BEGIN:cmd reggie-build create member --help -->
 ```bash
@@ -160,9 +160,6 @@ Created projects include:
 - Workspace integration support
 
 ### Sync
-
-- **Problem addressed**: In a multi project workspace, configuration like build systems and tool settings often drift apart, making maintenance difficult.
-- **Why it's useful**: Automatically propagates configuration from the root project to all members, ensuring consistency and reducing manual effort.
 
 <!-- BEGIN:cmd reggie-build sync --help -->
 ```bash
@@ -311,9 +308,6 @@ uv run reggie-build sync version 1.2.3
 
 ### OpenAPI
 
-- **Problem addressed**: Keeping generated API code in sync with an OpenAPI specification is hard to automate and often produces unnecessary git noise if timestamps change.
-- **Why it's useful**: Uses content hashing to only update files when the API contract actually changes, and supports `watch` mode for a seamless developer experience.
-
 <!-- BEGIN:cmd reggie-build openapi generate --help -->
 ```bash
 Usage: reggie-build openapi generate [OPTIONS] INPUT_SPEC [OUTPUT_DIR]         
@@ -380,9 +374,6 @@ The generator produces:
 - Proper separation between generated code and business logic
 
 ### README
-
-- **Problem addressed**: Command line documentation in READMEs often becomes outdated as the CLI evolves.
-- **Why it's useful**: Automates the process of embedding actual CLI help output into the README, ensuring the documentation is always accurate.
 
 <!-- BEGIN:cmd reggie-build readme update-cmd --help -->
 ```bash

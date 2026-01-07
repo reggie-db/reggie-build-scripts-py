@@ -252,7 +252,7 @@ def ruff(
         return
 
     def _exec(arg: Any, options: list[Any], py_files: list[pathlib.Path]):
-        out = utils.exec([ruff, arg, *options, *py_files])
+        out = utils.process_run([ruff, arg, *options, *py_files])
         message = ("ruff: %s", out)
 
         if LOG.isEnabledFor(logging.DEBUG):

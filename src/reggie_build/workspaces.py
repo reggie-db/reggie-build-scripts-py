@@ -168,7 +168,7 @@ def _uv_metadata(cwd: PathLike | str | None = None) -> dict:
         Parsed metadata dictionary from uv
     """
     args = ["uv", "workspace", "metadata"]
-    stdout = utils.exec(args, cwd=cwd)
+    stdout = utils.process_run(args, cwd=cwd)
     LOG.debug("UV metadata: %s", stdout)
     return json.loads(stdout)
 
