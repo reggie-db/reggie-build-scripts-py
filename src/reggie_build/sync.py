@@ -302,7 +302,10 @@ def version(
 
     def _set(pyproject: PyProject):
         """Update the project version."""
-        pyproject_version = utils.mapping_get(pyproject, "project", "version")
+        project = pyproject.get("project", None)
+        if not project:
+            return
+        pyproject_version = project.get("version", None)
         if version != pyproject_version:
             utils.mapping_set(pyproject, "project", "version", value=version)
             pyproject_name = pyproject.get("project", {}).get(
