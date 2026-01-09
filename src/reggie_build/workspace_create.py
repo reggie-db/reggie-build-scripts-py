@@ -99,9 +99,7 @@ def create(
     package_dir = project_dir / "src" / name.replace("-", "_")
     package_dir.mkdir(parents=True, exist_ok=True)
     (package_dir / "__init__.py").touch()
-    pyproject_tree.members.clear()
-    pyproject_tree.members[name] = pyproject.PyProject(pyproject_path)
-    workspace_sync.sync(pyproject_tree=pyproject_tree)
+    workspace_sync.sync(new_pyprojects={name: pyproject.PyProject(pyproject_path)})
     LOG.info("Member project created: %s", name)
 
 
