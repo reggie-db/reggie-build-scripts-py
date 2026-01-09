@@ -5,9 +5,6 @@ import pathlib
 import subprocess
 from dataclasses import dataclass
 
-import dacite
-from dacite import from_dict
-
 """
 Interface for uv workspace metadata.
 
@@ -67,11 +64,13 @@ def _metadata(path: pathlib.Path) -> Metadata:
             returncode=proc.returncode, cmd=args, output=proc.stdout, stderr=proc.stderr
         )
     data = json.loads(proc.stdout)
-    return from_dict(
-        data_class=Metadata,
-        data=data,
-        config=dacite.Config(type_hooks={pathlib.Path: pathlib.Path}),
-    )
+    workspace_root = pathlib.Path(data["workspace_root"])
+    members: list[MetadataMember] = []
+    for member in data["members"]:
+        name = member["name"]
+        path = pathlib.Path(member["path"])
+        members.append(MetadataMember(name=name, path=path))
+    return Metadata(workspace_root=workspace_root, members=members)
 
 
 def root_dir() -> pathlib.Path:
