@@ -1,8 +1,0 @@
-[project]
-name = "cool-dude"
-version = "0.0.1+g3e1575c"
-requires-python = ">=3.6"
-
-[build-system]
-requires = ["uv_build>=0.9.6,<0.10.0"]
-build-backend = "uv_build"

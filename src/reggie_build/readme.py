@@ -9,6 +9,7 @@ Supports parallel execution, smart help filtering, and selective updates.
 
 from __future__ import annotations
 
+import logging
 import re
 import shlex
 import subprocess
@@ -19,10 +20,9 @@ from typing import Pattern
 
 import typer
 
-from reggie_build import workspaces
-from reggie_build.utils import logger
+from reggie_build import workspace
 
-LOG = logger(__file__)
+LOG = logging.getLogger(__name__)
 
 app = typer.Typer(help="Update README command sentinel blocks.")
 
@@ -40,6 +40,104 @@ _CMD_BLOCK_RE = re.compile(
 _HELP_OPTIONS_HEADER_RE = re.compile(r"\bOptions\b.*[-─]")
 _HELP_OPTIONS_FOOTER_RE = re.compile(r"^\s*[-─╰╯]+")
 _HELP_OPTIONS_HELP_ROW_RE = re.compile(r"^\s*[│|]?\s*--help\b")
+
+
+@app.callback(invoke_without_command=True)
+def update_cmd(
+    ctx: typer.Context,
+    readme: Path = typer.Option(
+        Path("README.md"),
+        "--readme",
+        "-r",
+        help="Path to README file to update.",
+        file_okay=True,
+        dir_okay=False,
+    ),
+    write: bool = typer.Option(
+        True,
+        help="Write changes back to the README file.",
+    ),
+    jobs: int = typer.Option(
+        max(1, cpu_count() - 1),
+        "--jobs",
+        "-j",
+        help="Maximum number of parallel commands.",
+    ),
+    filter: str = typer.Option(
+        None,
+        "--filter",
+        help="Regex to select which BEGIN:cmd blocks to update.",
+    ),
+):
+    """
+    Update README command sentinel blocks.
+
+    Only blocks whose command matches --filter are executed and updated.
+    """
+    if not readme.exists():
+        readme = workspace.root_dir() / readme
+        if not readme.exists():
+            raise ValueError(f"README file not found at {readme}")
+
+    content = readme.read_text()
+
+    block_matches = list(_CMD_BLOCK_RE.finditer(content))
+    if not block_matches:
+        LOG.info("No cmd blocks found")
+        return
+
+    filter_re: Pattern[str] | None = re.compile(filter) if filter else None
+
+    selected_cmds: list[str] = []
+    for m in block_matches:
+        cmd = m.group("cmd")
+        if filter_re and not filter_re.search(cmd):
+            continue
+        selected_cmds.append(cmd)
+
+    if not selected_cmds:
+        LOG.info("No cmd blocks matched filter")
+        return
+
+    LOG.info(
+        "Running cmd blocks - count:%s total:%s jobs:%s",
+        len(selected_cmds),
+        len(block_matches),
+        jobs,
+    )
+
+    output_map: dict[str, str] = {}
+
+    with ProcessPoolExecutor(max_workers=jobs) as executor:
+        futures = {executor.submit(_run_cmd, cmd): cmd for cmd in selected_cmds}
+
+        for future in as_completed(futures):
+            cmd, output = future.result()
+            output_map[cmd] = output
+
+    def _replace(match: re.Match) -> str:
+        """Replace sentinel block content with executed command output."""
+        cmd = match.group("cmd")
+        if cmd not in output_map:
+            return match.group(0)  # untouched
+        return (
+            f"\n\n<!-- BEGIN:cmd {cmd} -->\n"
+            f"{output_map[cmd]}\n"
+            f"<!-- END:cmd {cmd} -->\n\n"
+        )
+
+    updated = _CMD_BLOCK_RE.sub(_replace, content)
+
+    if updated == content:
+        LOG.info("No changes detected")
+        return
+
+    LOG.info("README command blocks updated")
+
+    if write:
+        readme.write_text(updated)
+    else:
+        LOG.info("README update: %s", updated)
 
 
 def _run_cmd(cmd: str) -> tuple[str, str]:
@@ -109,104 +207,7 @@ def _run_cmd(cmd: str) -> tuple[str, str]:
     else:
         output = proc.stdout
 
-    return cmd, f"```bash\n{output.strip()}\n```"
-
-
-@app.command(name="update-cmd")
-def update_cmd(
-    ctx: typer.Context,
-    readme: Path = typer.Option(
-        Path("README.md"),
-        "--readme",
-        "-r",
-        help="Path to README file to update.",
-        file_okay=True,
-        dir_okay=False,
-    ),
-    write: bool = typer.Option(
-        True,
-        help="Write changes back to the README file.",
-    ),
-    jobs: int = typer.Option(
-        max(1, cpu_count() - 1),
-        "--jobs",
-        "-j",
-        help="Maximum number of parallel commands.",
-    ),
-    filter: str = typer.Option(
-        None,
-        "--filter",
-        help="Regex to select which BEGIN:cmd blocks to update.",
-    ),
-):
-    """
-    Update README command sentinel blocks.
-
-    Only blocks whose command matches --filter are executed and updated.
-    """
-    root_node = workspaces.root_node(ctx=ctx)
-    if not readme.exists():
-        readme = root_node.path / readme
-        if not readme.exists():
-            raise ValueError(f"README file not found at {readme}")
-
-    content = readme.read_text()
-
-    block_matches = list(_CMD_BLOCK_RE.finditer(content))
-    if not block_matches:
-        LOG.info("No cmd blocks found.")
-        return
-
-    filter_re: Pattern[str] | None = re.compile(filter) if filter else None
-
-    selected_cmds: list[str] = []
-    for m in block_matches:
-        cmd = m.group("cmd")
-        if filter_re and not filter_re.search(cmd):
-            continue
-        selected_cmds.append(cmd)
-
-    if not selected_cmds:
-        LOG.info("No cmd blocks matched filter.")
-        return
-
-    LOG.info(
-        f"Running {len(selected_cmds)} of {len(block_matches)} cmd blocks "
-        f"with {jobs} workers."
-    )
-
-    output_map: dict[str, str] = {}
-
-    with ProcessPoolExecutor(max_workers=jobs) as executor:
-        futures = {executor.submit(_run_cmd, cmd): cmd for cmd in selected_cmds}
-
-        for future in as_completed(futures):
-            cmd, output = future.result()
-            output_map[cmd] = output
-
-    def _replace(match: re.Match) -> str:
-        """Replace sentinel block content with executed command output."""
-        cmd = match.group("cmd")
-        if cmd not in output_map:
-            return match.group(0)  # untouched
-        return (
-            f"\n\n<!-- BEGIN:cmd {cmd} -->\n"
-            f"{output_map[cmd]}\n"
-            f"<!-- END:cmd {cmd} -->\n\n"
-        )
-
-    updated = _CMD_BLOCK_RE.sub(_replace, content)
-
-    if updated == content:
-        LOG.info("No changes detected. README is already up to date.")
-        return
-
-    LOG.info("README command blocks updated.")
-
-    if write:
-        readme.write_text(updated)
-    else:
-        LOG.info(updated)
+    return cmd, f"```shell\n{output.strip()}\n```"
 
 
 def main():

@@ -1,37 +1,34 @@
 # reggie-build
 
-A comprehensive workspace management tool designed to handle complicated and common code generation tasks across multi-project Python environments. Built to be adopted by any project requiring automated code generation, workspace synchronization, and build orchestration.
+A comprehensive workspace management tool designed to handle complicated and common code generation tasks across
+multi-project Python environments. Built to be adopted by any project requiring automated code generation, workspace
+synchronization, and build orchestration.
 
 ## Why Use reggie-build?
 
 Managing multi-project Python workspaces becomes increasingly complex as projects grow. Common challenges include:
 
-- **Code Generation Complexity**: OpenAPI specs, protobuf definitions, and other schema-driven code need consistent regeneration workflows
 - **Configuration Drift**: Build configs, dependencies, and tool settings diverge across related projects
 - **Workspace Coordination**: Multiple projects with interdependencies require careful version and dependency management
 - **Build Artifact Management**: Generated files, caches, and artifacts accumulate without systematic cleanup
 
 `reggie-build` solves these problems by providing a battle-tested CLI that orchestrates:
 
-- **Automated Code Generation**: Generate FastAPI code from OpenAPI specs with hash based change detection and watch mode
-- **Smart Synchronization**: Keep build configs, dependencies, and tool settings consistent across all workspace projects
+- **Smart Synchronization**: Keep build configs, dependencies, and tool settings consistent across all workspace
+  projects
 - **Project Scaffolding**: Bootstrap new projects with standard layouts and automatic workspace integration
-- **Artifact Management**: Clean build artifacts safely with protection for critical directories
 - **Version Coordination**: Manage version strings across multiple projects with git integration
 
 ## Use Cases
 
-### OpenAPI-Driven Development
-Generate type-safe FastAPI code from OpenAPI specifications with custom templates. The tool handles downloading specs from URLs, detecting changes, and only updating when necessary. Perfect for microservice architectures where API contracts drive implementation.
-
 ### Multi-Project Workspaces
-Manage Python monorepos or multi-project repositories where several related packages share common build configurations, dependencies, and tooling. Synchronize settings from a root project to all members automatically.
+
+Manage Python monorepos or multi-project repositories where several related packages share common build configurations,
+dependencies, and tooling. Synchronize settings from a root project to all members automatically.
 
 ### Continuous Integration
-Integrate code generation into CI/CD pipelines with deterministic outputs and change detection. Only regenerate when specs change, reducing unnecessary diff noise.
 
-### Schema-Driven Workflows
-While currently supporting OpenAPI, the architecture can be extended to handle other code generation tasks like protobuf compilation, GraphQL schema generation, or database model generation.
+Integrate workspace management into CI/CD pipelines with deterministic outputs and change detection.
 
 ## Installation
 
@@ -44,27 +41,22 @@ reggie-build is designed to be used as a development dependency. Add it to your 
 ```toml
 [dependency-groups]
 dev = [
-  "reggie-build-py @ git+https://github.com/reggie-db/reggie-build-py.git"
+    "reggie-build-py @ git+https://github.com/reggie-db/reggie-build-py.git"
 ]
 ```
 
 Then use it via `uv run` without polluting your production dependencies:
 
 ```bash
-# Generate code
-uv run reggie-build openapi generate spec.yaml
-
 # Sync configurations
 uv run reggie-build sync
 
-# Clean artifacts
-uv run reggie-build clean build-artifacts
-
 # Create new projects
-uv run reggie-build create member new-service
+uv run reggie-build create new-service
 ```
 
-Using `uv run` ensures reggie-build and its dependencies are isolated from your project's runtime dependencies while remaining available for all developers and CI/CD environments.
+Using `uv run` ensures reggie-build and its dependencies are isolated from your project's runtime dependencies while
+remaining available for all developers and CI/CD environments.
 
 ### For reggie-build Development
 
@@ -77,83 +69,46 @@ pip install -e .
 
 ## Commands
 
-### Clean
-
-<!-- BEGIN:cmd reggie-build clean build-artifacts --help -->
-```bash
-Usage: reggie-build clean build-artifacts [OPTIONS]                            
-                                                                                
- Remove Python build artifacts from the workspace.                              
-                                                                                
- This command recursively walks the workspace directory tree and removes:       
- - Virtual environment directories (.venv)                                      
- - Python bytecode cache directories (__pycache__)                              
- - Python egg-info directories                                                  
-                                                                                
- It protects the root .venv directory from deletion.
-```
-<!-- END:cmd reggie-build clean build-artifacts --help -->
-
-```bash
-# Clean all build artifacts
-uv run reggie-build clean build-artifacts
-```
-
-This command removes:
-- Virtual environments (`.venv` directories)
-- Python bytecode caches (`__pycache__` directories)
-- Egg info directories
-
-The root `.venv` directory is protected from deletion.
-
 ### Create
 
-<!-- BEGIN:cmd reggie-build create member --help -->
-```bash
-Usage: reggie-build create member [OPTIONS] NAME                               
+<!-- BEGIN:cmd reggie-build create --help -->
+```shell
+Usage: reggie-build create [OPTIONS] NAME COMMAND [ARGS]...                    
                                                                                 
  Create a new member project in the workspace.                                  
                                                                                 
- This command creates a new Python project with:                                
- - A pyproject.toml configuration file                                          
- - Standard src layout (src/<package_name>/__init__.py)                         
- - Optional dependencies on other workspace projects                            
-                                                                                
- The project name is used for both the directory and package name (with hyphens 
- converted to underscores for the package).                                     
+ Sets up a pyproject.toml and a standard src/<package>/__init__.py layout.      
+ Internal workspace dependencies are automatically synchronized after creation. 
                                                                                 
 ╭─ Arguments ──────────────────────────────────────────────────────────────────╮
-│ *    name      TEXT  Name of the project to create. Used as both the         │
-│                      directory name and the project name.                    │
+│ *    name      TEXT  The name of the new project (used for directory and     │
+│                      package name).                                          │
 │                      [required]                                              │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
-│ --path                         DIRECTORY  Optional parent directory path     │
-│                                           within the workspace root. If      │
-│                                           omitted, the project is created in │
-│                                           the workspace root.                │
-│ --project-dependency  -pd      TEXT       Optional list of existing          │
-│                                           workspace project names to include │
-│                                           as dependencies in the new         │
-│                                           project's pyproject.toml.          │
+│ --path                         PATH  Optional parent directory within the    │
+│                                      workspace root. Defaults to root.       │
+│ --project-dependency  -pd      TEXT  List of existing workspace projects to  │
+│                                      depend on.                              │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
-<!-- END:cmd reggie-build create member --help -->
+<!-- END:cmd reggie-build create --help -->
 
 ```bash
 # Create a new project
-uv run reggie-build create member my-project
+uv run reggie-build create my-project
 
 # Create a project with dependencies on other workspace projects
-uv run reggie-build create member my-api \
+uv run reggie-build create my-api \
   --project-dependency my-core \
   --project-dependency my-models
 
 # Create in a specific path within the workspace
-uv run reggie-build create member my-project --path /path/to/parent
+uv run reggie-build create my-project --path /path/to/parent
 ```
 
 Created projects include:
+
 - Standard Python src layout (`src/<package_name>/`)
 - Configured `pyproject.toml` with optional dependencies
 - `__init__.py` for package initialization
@@ -162,33 +117,49 @@ Created projects include:
 ### Sync
 
 <!-- BEGIN:cmd reggie-build sync --help -->
-```bash
+```shell
 Usage: reggie-build sync [OPTIONS] COMMAND [ARGS]...                           
                                                                                 
- Synchronize all configuration across member projects.                          
+ Synchronize project configurations across the workspace.                       
                                                                                 
- When run without a subcommand, executes all registered sync commands against   
- the selected projects. This includes build-system config, dependencies,        
- tool settings, formatting, and versioning.                                     
-                                                                                
- Use --project to limit which projects are affected, or omit to sync all        
- workspace members.                                                             
+ This command performs several synchronization tasks to keep member projects    
+ aligned with the root project settings and ensure consistent dependencies.     
                                                                                 
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
-│ --project  -p      TEXT  Optional list of workspace node/project names to    │
-│                          sync                                                │
-╰──────────────────────────────────────────────────────────────────────────────╯
-╭─ Commands ───────────────────────────────────────────────────────────────────╮
-│ build-system                  Sync build-system config from root to member   │
-│                               projects.                                      │
-│ member-project-dependencies   Sync member project dependencies to workspace  │
-│                               file references.                               │
-│ member-project-tool           Sync tool.member-project config from root to   │
-│                               member projects.                               │
-│ ruff                          Run ruff formatter on git tracked Python       │
-│                               files.                                         │
-│ version                       Sync project versions across selected          │
-│                               projects.                                      │
+│ --name                -n                          TEXT  Specific member      │
+│                                                         project names to     │
+│                                                         sync.                │
+│ --version                 --no-version                  Sync version from    │
+│                                                         git history to all   │
+│                                                         member projects.     │
+│                                                         [default: version]   │
+│ --build-system            --no-build-system             Sync  from root      │
+│                                                         project to all       │
+│                                                         member projects.     │
+│                                                         [default:            │
+│                                                         build-system]        │
+│ --member-project-to…      --no-member-project…          Sync  from root      │
+│                                                         project to all       │
+│                                                         member projects.     │
+│                                                         [default:            │
+│                                                         member-project-tool] │
+│ --member-project-de…      --no-member-project…          Sync internal member │
+│                                                         dependencies to use  │
+│                                                         file:// paths and uv │
+│                                                         workspace sources.   │
+│                                                         [default:            │
+│                                                         member-project-depe… │
+│ --format-python           --no-format-python            Run ruff format and  │
+│                                                         check on all         │
+│                                                         projects.            │
+│                                                         [default:            │
+│                                                         format-python]       │
+│ --format-pyproject        --no-format-pyproje…          Format               │
+│                                                         pyproject.toml files │
+│                                                         using taplo.         │
+│                                                         [default:            │
+│                                                         format-pyproject]    │
+│                                                         and exit.            │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 <!-- END:cmd reggie-build sync --help -->
@@ -198,202 +169,35 @@ Usage: reggie-build sync [OPTIONS] COMMAND [ARGS]...
 uv run reggie-build sync
 
 # Sync specific projects only
-uv run reggie-build sync --project project1 --project project2
+uv run reggie-build sync --name project1 --name project2
 
-# Run individual sync commands
-uv run reggie-build sync build-system
-uv run reggie-build sync member-project-dependencies
-uv run reggie-build sync member-project-tool
-uv run reggie-build sync ruff
-uv run reggie-build sync version
+# Disable specific sync tasks
+uv run reggie-build sync --no-version --no-format-python
 ```
-
-#### Sync Subcommands
-
-**build-system**
-
-<!-- BEGIN:cmd reggie-build sync build-system --help -->
-```bash
-Usage: reggie-build sync build-system [OPTIONS]                                
-                                                                                
- Sync build-system config from root to member projects.                         
-                                                                                
- Copies the  section from the root pyproject.toml to all selected               
- projects, ensuring consistent build tooling across the workspace.              
-                                                                                
-╭─ Options ────────────────────────────────────────────────────────────────────╮
-│ --project  -p      TEXT  Optional list of workspace node/project names to    │
-│                          sync                                                │
-╰──────────────────────────────────────────────────────────────────────────────╯
-```
-<!-- END:cmd reggie-build sync build-system --help -->
-
-**member-project-dependencies**
-
-<!-- BEGIN:cmd reggie-build sync member-project-dependencies --help -->
-```bash
-Usage: reggie-build sync member-project-dependencies [OPTIONS]                 
-                                                                                
- Sync member project dependencies to workspace file references.                 
-                                                                                
- Converts member project dependencies to file:// references using               
- ${PROJECT_ROOT} placeholders and updates tool.uv.sources accordingly.          
-                                                                                
-╭─ Options ────────────────────────────────────────────────────────────────────╮
-│ --project  -p      TEXT  Optional list of workspace node/project names to    │
-│                          sync                                                │
-╰──────────────────────────────────────────────────────────────────────────────╯
-```
-<!-- END:cmd reggie-build sync member-project-dependencies --help -->
-
-**member-project-tool**
-
-<!-- BEGIN:cmd reggie-build sync member-project-tool --help -->
-```bash
-Usage: reggie-build sync member-project-tool [OPTIONS]                         
-                                                                                
- Sync tool.member-project config from root to member projects.                  
-                                                                                
- Copies the  section from the root pyproject.toml to all                        
- selected member projects.                                                      
-                                                                                
-╭─ Options ────────────────────────────────────────────────────────────────────╮
-│ --project  -p      TEXT  Optional list of workspace node/project names to    │
-│                          sync                                                │
-╰──────────────────────────────────────────────────────────────────────────────╯
-```
-<!-- END:cmd reggie-build sync member-project-tool --help -->
-
-**ruff**
-
-<!-- BEGIN:cmd reggie-build sync ruff --help -->
-```bash
-Usage: reggie-build sync ruff [OPTIONS]                                        
-                                                                                
- Run ruff formatter on git tracked Python files.                                
-                                                                                
- Formats all Python files tracked by git using ruff.
-```
-<!-- END:cmd reggie-build sync ruff --help -->
-
-**version**
-
-<!-- BEGIN:cmd reggie-build sync version --help -->
-```bash
-Usage: reggie-build sync version [OPTIONS] [VERSION]                           
-                                                                                
- Sync project versions across selected projects.                                
-                                                                                
- Updates the version field in pyproject.toml. If no version specified,          
- derives from git commit hash or uses default.                                  
-                                                                                
-╭─ Arguments ──────────────────────────────────────────────────────────────────╮
-│   version      [VERSION]  Version string (e.g. 1.2.3). Defaults to git or    │
-│                           0.0.1.                                             │
-╰──────────────────────────────────────────────────────────────────────────────╯
-╭─ Options ────────────────────────────────────────────────────────────────────╮
-│ --project  -p      TEXT  Optional list of workspace node/project names to    │
-│                          sync                                                │
-╰──────────────────────────────────────────────────────────────────────────────╯
-```
-<!-- END:cmd reggie-build sync version --help -->
-
-```bash
-# Use git-derived version
-uv run reggie-build sync version
-
-# Specify explicit version
-uv run reggie-build sync version 1.2.3
-```
-
-### OpenAPI
-
-<!-- BEGIN:cmd reggie-build openapi generate --help -->
-```bash
-Usage: reggie-build openapi generate [OPTIONS] INPUT_SPEC [OUTPUT_DIR]         
-                                                                                
- Generate FastAPI code from an OpenAPI specification and sync changes.          
-                                                                                
- This command generates Python code from an OpenAPI spec, creating FastAPI      
- routes and Pydantic models. It uses hash based change detection to only        
- update the output directory when files actually change.                        
-                                                                                
- In watch mode, the command monitors the spec file and regenerates code         
- whenever changes are detected.                                                 
-                                                                                
-╭─ Arguments ──────────────────────────────────────────────────────────────────╮
-│ *    input_spec      TEXT          Path or URL to the OpenAPI specification  │
-│                                    (YAML or JSON). May be a local file path  │
-│                                    or an HTTP(S) URL.                        │
-│                                    [required]                                │
-│      output_dir      [OUTPUT_DIR]  Destination directory for generated code. │
-╰──────────────────────────────────────────────────────────────────────────────╯
-╭─ Options ────────────────────────────────────────────────────────────────────╮
-│ --template-dir        PATH  Optional template directory for                  │
-│                             fastapi-code-generator.                          │
-│ --watch                     Watch a local spec file for changes and          │
-│                             regenerate on updates.                           │
-╰──────────────────────────────────────────────────────────────────────────────╯
-```
-<!-- END:cmd reggie-build openapi generate --help -->
-
-```bash
-# Generate from local file
-uv run reggie-build openapi generate spec.yaml
-
-# Generate from URL (great for CI/CD)
-uv run reggie-build openapi generate https://example.com/api/openapi.json
-
-# Specify output directory
-uv run reggie-build openapi generate spec.yaml output-dir
-
-# Use custom templates
-uv run reggie-build openapi generate spec.yaml --template-dir ./templates
-
-# Watch mode for development (regenerate on changes)
-uv run reggie-build openapi generate spec.yaml --watch
-```
-
-#### Why This Generator?
-
-Unlike basic code generators, reggie-build's OpenAPI generator is designed for real-world production use:
-
-**Smart Change Detection**: Uses SHA256 hashing to detect actual changes in generated code, ignoring timestamp comments. Only updates output when content actually changes, reducing git diff noise.
-
-**Remote Spec Support**: Download specs from URLs with content-based directory naming. Perfect for consuming external APIs or working with spec servers in CI/CD pipelines.
-
-**Custom Templates**: Ships with production-ready templates that generate abstract API contract classes, making it easy to implement APIs by extending generated base classes. Customize templates for your specific needs.
-
-**Watch Mode**: During development, automatically regenerate code when specs change. Speeds up the edit-test cycle for API-driven development.
-
-The generator produces:
-- FastAPI routers with type-safe endpoints
-- Pydantic models from schemas with full validation
-- Abstract API contract base classes for clean implementation patterns
-- Request/response logging and debugging support
-- Proper separation between generated code and business logic
 
 ### README
 
-<!-- BEGIN:cmd reggie-build readme update-cmd --help -->
+<!-- BEGIN:cmd reggie-build readme --help -->
+
 ```bash
-Usage: reggie-build readme update-cmd [OPTIONS]                                
-                                                                                
- Update README command sentinel blocks.                                         
-                                                                                
- Only blocks whose command matches --filter are executed and updated.           
-                                                                                
+Usage: reggie-build readme update-cmd [OPTIONS]
+
+ Update README command sentinel blocks.
+
+ Only blocks whose command matches --filter are executed and updated.
+
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
-│ --readme  -r                FILE     Path to README file to update.          │
-│                                      [default: README.md]                    │
-│ --write       --no-write             Write changes back to the README file.  │
-│                                      [default: write]                        │
-│ --jobs    -j                INTEGER  Maximum number of parallel commands.    │
-│                                      [default: 13]                           │
-│ --filter                    TEXT     Regex to select which BEGIN:cmd blocks  │
-│                                      to update.                              │
+│ --readme  -r      FILE     Path to README file to update.                    │
+│                            [default: README.md]                              │
+│ --write   -w      BOOLEAN  Write changes back to the README file.            │
+│                            [default: True]                                   │
+│ --jobs    -j      INTEGER  Maximum number of parallel commands.               │
+│                            [default: 13]                                     │
+│ --filter          TEXT     Regex to select which BEGIN:cmd blocks to update. │
+│ --help                     Show this message and exit.                       │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
+
 <!-- END:cmd reggie-build readme update-cmd --help -->
 
 Automatically update README.md files by executing help commands embedded in sentinel blocks.
@@ -415,48 +219,66 @@ uv run reggie-build readme update-cmd --write false
 uv run reggie-build readme update-cmd --jobs 4
 ```
 
-> **Note**: This README's command documentation was automatically generated using `reggie-build readme update-cmd`, which executes commands and embeds their help output into sentinel blocks.
-
+> **Note**: This README's command documentation was automatically generated using `reggie-build readme update-cmd`,
+> which executes commands and embeds their help output into sentinel blocks.
 
 #### How It Works
 
 The `readme update-cmd` command looks for sentinel blocks in your README:
 
 <!-- BEGIN:cmd reggie-build sync --help -->
-```bash
+```shell
 Usage: reggie-build sync [OPTIONS] COMMAND [ARGS]...                           
                                                                                 
- Synchronize all configuration across member projects.                          
+ Synchronize project configurations across the workspace.                       
                                                                                 
- When run without a subcommand, executes all registered sync commands against   
- the selected projects. This includes build-system config, dependencies,        
- tool settings, formatting, and versioning.                                     
-                                                                                
- Use --project to limit which projects are affected, or omit to sync all        
- workspace members.                                                             
+ This command performs several synchronization tasks to keep member projects    
+ aligned with the root project settings and ensure consistent dependencies.     
                                                                                 
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
-│ --project  -p      TEXT  Optional list of workspace node/project names to    │
-│                          sync                                                │
-╰──────────────────────────────────────────────────────────────────────────────╯
-╭─ Commands ───────────────────────────────────────────────────────────────────╮
-│ build-system                  Sync build-system config from root to member   │
-│                               projects.                                      │
-│ member-project-dependencies   Sync member project dependencies to workspace  │
-│                               file references.                               │
-│ member-project-tool           Sync tool.member-project config from root to   │
-│                               member projects.                               │
-│ ruff                          Run ruff formatter on git tracked Python       │
-│                               files.                                         │
-│ version                       Sync project versions across selected          │
-│                               projects.                                      │
+│ --name                -n                          TEXT  Specific member      │
+│                                                         project names to     │
+│                                                         sync.                │
+│ --version                 --no-version                  Sync version from    │
+│                                                         git history to all   │
+│                                                         member projects.     │
+│                                                         [default: version]   │
+│ --build-system            --no-build-system             Sync  from root      │
+│                                                         project to all       │
+│                                                         member projects.     │
+│                                                         [default:            │
+│                                                         build-system]        │
+│ --member-project-to…      --no-member-project…          Sync  from root      │
+│                                                         project to all       │
+│                                                         member projects.     │
+│                                                         [default:            │
+│                                                         member-project-tool] │
+│ --member-project-de…      --no-member-project…          Sync internal member │
+│                                                         dependencies to use  │
+│                                                         file:// paths and uv │
+│                                                         workspace sources.   │
+│                                                         [default:            │
+│                                                         member-project-depe… │
+│ --format-python           --no-format-python            Run ruff format and  │
+│                                                         check on all         │
+│                                                         projects.            │
+│                                                         [default:            │
+│                                                         format-python]       │
+│ --format-pyproject        --no-format-pyproje…          Format               │
+│                                                         pyproject.toml files │
+│                                                         using taplo.         │
+│                                                         [default:            │
+│                                                         format-pyproject]    │
+│                                                         and exit.            │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 <!-- END:cmd reggie-build sync --help -->
 
-It executes the command between `BEGIN:cmd` and `--help`, captures the output, and replaces the content between the BEGIN and END markers with a formatted code block containing the command's output.
+It executes the command between `BEGIN:cmd` and `--help`, captures the output, and replaces the content between the
+BEGIN and END markers with a formatted code block containing the command's output.
 
 **Features**:
+
 - **Parallel Execution**: Runs multiple commands in parallel for faster updates
 - **Smart Help Filtering**: Automatically removes `--help` option rows from help output to reduce noise
 - **Empty Section Removal**: Removes empty Options sections when `--help` is the only option
@@ -518,146 +340,67 @@ build-backend = "hatchling.build"
 
 ### Common Workflows
 
-**Setting Up Code Generation**:
-```bash
-# Generate API code from your OpenAPI spec
-uv run reggie-build openapi generate api/spec.yaml api/generated
-
-# Add to your CI pipeline for automated updates
-uv run reggie-build openapi generate https://api-server/openapi.json
-```
-
 **Keeping Projects in Sync**:
+
 ```bash
 # Sync everything (run after changing root config)
 uv run reggie-build sync
 
 # Or sync specific aspects
-uv run reggie-build sync build-system
-uv run reggie-build sync member-project-dependencies
+uv run reggie-build sync --no-format-python
 ```
 
 **Before Committing**:
-```bash
-# Format code
-uv run reggie-build sync ruff
 
-# Clean artifacts
-uv run reggie-build clean build-artifacts
+```bash
+# Sync and format
+uv run reggie-build sync
 ```
 
 ## Module Reference
 
-### app.py
+### config.py
 
-Main entry point that aggregates all subcommands and provides a unified CLI interface.
+Configuration and logging initialization for reggie-build. Sets up logging handlers and levels.
 
-### clean.py
+### pyproject.py
 
-Utilities for removing build artifacts, with protection for important directories.
+Utility for managing and manipulating pyproject.toml files using tomlkit and taplo.
 
-### create.py
+### workspace.py
 
-Project bootstrapping with standard Python layouts and dependency management.
+Interface for uv workspace metadata retrieval.
 
-### openapi.py
+### workspace_create.py
 
-FastAPI code generation from OpenAPI specs with synchronization and watch mode support. Uses the `fastapi-code-generator` library with custom templates for generating API contract classes.
+Utilities for bootstrapping new workspace member projects.
 
-### projects.py
+### workspace_sync.py
 
-Simplified project management with intelligent source resolution.
-
-Key function:
-- `project(source, cwd, ctx)`: Factory function that resolves sources (None/name/path) to PyProject instances with context caching
-
-Key class:
-- `PyProject`: Extends tomlkit.TOMLDocument with convenient persistence methods (reload, persist with automatic pruning and formatting)
+Core synchronization logic for versions, build systems, and dependencies.
 
 ### readme.py
 
-Automated README documentation updater that executes commands and embeds their output in sentinel blocks. Keeps documentation synchronized with actual command behavior.
-
-Key features:
-- Parallel command execution for fast updates
-- Smart filtering of help output (removes `--help` rows, empty sections)
-- Selective updates via regex filtering
-- Safe preview mode
-
-### sync.py
-
-Configuration synchronization across workspace projects using `projects.project()` and `workspaces.node()` for streamlined access.
-
-Key commands:
-- `build_system`: Sync [build-system] from root to members
-- `member_project_dependencies`: Convert member dependencies to workspace file references
-- `member_project_tool`: Sync [tool.member-project] configuration
-- `ruff`: Format code with ruff
-- `version`: Synchronize version strings
-
-Architecture:
-- Uses `projects.project()` for automatic caching and persistence
-- Context callbacks handle file writing on command completion
-- All workspace access via `workspaces.node()` and `workspaces.root_node()`
-
-### utils.py
-
-General utilities including logging, git integration, file watching, and mapping manipulation.
-
-Key utilities:
-- `mapping_get/set/merge/prune`: Nested dictionary path utilities for working with pyproject.toml
-- `exec()`: Command execution with stderr logging
-- `command_meta_cache()`: Context-based caching with cleanup callbacks
-- `logger()`: Configured logger with stdout/stderr separation
-- `watch_file()`: Monitor files for changes with hash based detection
-- `git_version()`, `git_files()`, `git_repo_name()`: Git integration helpers
-
-### workspaces.py
-
-Workspace discovery and metadata utilities using `uv workspace metadata` command.
-
-Key class:
-- `WorkspaceNode`: Hierarchical representation of workspace structure with root and member nodes
-
-Key functions:
-- `root_node(cwd, ctx)`: Discover and build workspace node tree from uv metadata with optional caching
-- `node(source, cwd, ctx)`: Find a workspace node by name or path, with optional caching
+Automated README documentation updater using command output sentinels.
 
 ## Development
 
 ### Dependencies
 
 Core dependencies:
+
 - `typer`: CLI framework
 - `tomlkit`: TOML manipulation
-- `fastapi-code-generator`: OpenAPI to FastAPI conversion
-- `packaging`: Version handling
+- `mergedeep`: Deep merging of configurations
+- `dacite`: Dataclass conversion
 
 ### Environment Variables
 
 - `LOG_LEVEL`: Control logging verbosity (DEBUG, INFO, WARNING, ERROR, CRITICAL)
 
-### Templates
-
-The OpenAPI generator includes custom Jinja2 templates in `src/reggie_build/openapi_template/`. The `main.jinja` template generates:
-- `APIContract` abstract base class with operation methods
-- `GeneratedRouter` class that binds routes to contract implementations
-- `create_app()` helper for FastAPI application creation
-
 ## Extending reggie-build
 
-The tool is designed to be extended for your specific code generation needs:
-
-### Custom OpenAPI Templates
-
-Create your own Jinja2 templates to customize generated code:
-
-```bash
-# Use your templates
-uv run reggie-build openapi generate spec.yaml --template-dir ./my-templates
-```
-
-Study the included templates in `src/reggie_build/openapi_template/` as a starting point.
+The tool is designed to be extended for your specific needs:
 
 ### Adding New Commands
 
@@ -665,22 +408,19 @@ The modular architecture makes it easy to add new commands for your specific nee
 
 1. Create a new module in `src/reggie_build/`
 2. Define a Typer app with your commands
-3. Add it to `app.py` to integrate with the CLI
-
-### Custom Sync Operations
-
-Add project-specific sync operations by creating new commands in the sync module. These automatically integrate with `reggie-build sync` to run all operations at once.
+3. Add it to `cli.py` to integrate with the CLI
 
 ## Real-World Examples
 
 ### Microservice Architecture
-Use reggie-build to manage a microservice ecosystem where each service has its own project but shares common infrastructure code, build configs, and API contracts.
 
-### API Gateway Pattern
-Generate client libraries and server stubs from a central OpenAPI specification. Keep multiple language implementations in sync with a single source of truth.
+Use reggie-build to manage a microservice ecosystem where each service has its own project but shares common
+infrastructure code, build configs, and deployment settings.
 
 ### Monorepo Management
-Coordinate builds, tests, and deployments across dozens of related Python packages with consistent tooling and dependencies.
+
+Coordinate builds, tests, and deployments across dozens of related Python packages with consistent tooling and
+dependencies.
 
 ## License
 
@@ -688,7 +428,8 @@ See [LICENSE](LICENSE) file for details.
 
 ## Contributing
 
-Contributions that enhance code generation capabilities, add new generators, or improve workspace management are welcome. Maintain these principles:
+Contributions that enhance workspace management capabilities are welcome. Maintain these principles:
+
 - Preserve existing variable names and logic unless explicitly refactoring
 - Add comprehensive documentation to all new or significantly modified code
 - Follow Python standard ordering for globals, functions, and classes
@@ -698,5 +439,5 @@ Contributions that enhance code generation capabilities, add new generators, or 
 
 ## Support
 
-For issues, questions, or feature requests related to using reggie-build in your project, please open an issue on GitHub.
-
+For issues, questions, or feature requests related to using reggie-build in your project, please open an issue on
+GitHub.

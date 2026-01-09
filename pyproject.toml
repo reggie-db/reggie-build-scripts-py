@@ -4,13 +4,25 @@ build-backend = "uv_build"
 
 [project]
 name = "reggie-build"
-version = "0.0.1+gfe48d04"
+version = "0.0.1+gac4356a"
 description = "Local build utilities"
 requires-python = ">=3.12,<3.14"
-dependencies = ["uv>=0.9.9", "tomlkit", "requests", "typer"]
-
-[project.scripts]
-reggie-build = "reggie_build.app:main"
+dependencies = [
+    "uv>=0.9.9",
+    "ruff",
+    "taplo",
+    "sitecustomize-entrypoints",
+    "dacite",
+    "tomlkit",
+    "mergedeep",
+    "typer",
+]
 
 [dependency-groups]
 dev = ["pytest"]
+
+[project.entry-points.sitecustomize]
+logs_auto_config = "reggie_build.config:init"
+
+[project.scripts]
+reggie-build = "reggie_build.cli:main"

@@ -12,14 +12,12 @@ a unified interface for workspace management. The CLI provides commands for:
 
 import typer
 
-from reggie_build import clean, create, openapi, readme, sync
+from reggie_build import readme, workspace_create, workspace_sync
 
 app = typer.Typer()
-app.add_typer(clean.app, name="clean")
-app.add_typer(create.app, name="create")
+app.add_typer(workspace_create.app, name="create")
+app.add_typer(workspace_sync.app, name="sync")
 app.add_typer(readme.app, name="readme")
-app.add_typer(sync.app, name="sync")
-app.add_typer(openapi.app, name="openapi")
 
 
 def main():
